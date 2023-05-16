@@ -47,23 +47,6 @@ static const char* p1template = "/XMX5XMXCQA0000020863\r\n"
     "1-0:62.7.0(00.000*kW)\r\n"
     "!";
 
-uint16_t crc16(std::string_view payload)
-{
-  // Polynomial: x^16 + x^15 + x^2 + 1 (0xa001)
-  uint16_t crc = 0;
-  for (auto octet : payload)
-  {
-    crc ^= static_cast<uint8_t>(octet);
-    for (auto _ : std::views::iota(0, 8))
-    {
-      if (crc & 1)
-        crc = (crc >> 1) ^ 0xa001;
-      else
-        crc = (crc >> 1);
-    }
-  }
-  return crc;
-}
 
 
 int main(int argc, const char **argv)
