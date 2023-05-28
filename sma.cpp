@@ -4,6 +4,8 @@
 
 #include <boost/asio.hpp>
 
+using namespace std::literals::chrono_literals;
+
 namespace
 {
 
@@ -144,20 +146,32 @@ struct producer_impl : core::producer
 
         try
         {
+            // 30775 = total power produced by inverter
+            // 31393 = battery charge
+            // 31395 = discharge
+            // 30845 = soc(%)
+
             modbus_request request;
             request.reference_number = htons(31253);
             request.word_count = htons(18);
+            auto t0 = std::chrono::system_clock::now();
             std::size_t written = m_sock.write_some(boost::asio::buffer(reinterpret_cast<const uint8_t*>(&request), sizeof(request)));
             if (written != sizeof(request)) throw sysexc(EMSGSIZE);
+            auto t1 = std::chrono::system_clock::now();
             std::array<uint8_t, 1500> raw_response;
             std::size_t received = m_sock.read_some(boost::asio::buffer(raw_response, raw_response.size()));
+            auto t2 = std::chrono::system_clock::now();
+            if (t2 - t0 > 500ms)
+            {
+                logfwarn("sma: read took %s, write took %s", t2 - t1, t1 - t0);
+            }
             const modbus_response& response = *reinterpret_cast<const modbus_response*>(raw_response.begin());
             response.validate(received, request);
 
             for (size_t i = 0; i < 3; i++)
             {
-                sit.ac[i].voltage(response.get(i * 2) / 100.0);
-                sit.ac[i].current((double(response.get(i * 2 + 12)) - double(response.get(i * 2 + 6))) * 100.0 / response.get(i * 2));
+                sit.ac[i].voltage = response.get(i * 2) / 100.0;
+                sit.ac[i].current = (double(response.get(i * 2 + 12)) - double(response.get(i * 2 + 6))) * 100.0 / response.get(i * 2);
             }
 
             if (m_request_error.failed())

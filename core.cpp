@@ -4,6 +4,7 @@
 #include "config.h"
 #include "logf.h"
 #include "settings.h"
+#include "www.h"
 
 #include <signal.h>
 #include <stdlib.h>
@@ -14,7 +15,6 @@
 #include <cstring>
 #include <chrono>
 #include <thread>
-#include <string_view>
 
 using namespace std::literals::chrono_literals;
 
@@ -34,7 +34,9 @@ struct registry
     std::map<std::string_view, policy*> policies;
     std::map<std::string_view, consumer*> consumers;
     config::param<std::string> default_policy{"default_policy", ""};
+    config::param<double> standard_voltage{"standard_voltage", 230.0};
     settings::object<std::string> active_policy;
+    budget current_budget;
 
 private:
     registry()
@@ -43,6 +45,44 @@ private:
 
     friend class mutex_protected<registry>;
 };
+
+auto curcap_rpc = www::rpc::get("curcap", [] {
+    auto reg = registry::lock();
+    return int(reg->current_budget.current * reg->standard_voltage.get() * int(phase::count));
+});
+
+auto policies_rpc = www::rpc::get("policies", [] {
+    auto reg = registry::lock();
+    nlohmann::json out;
+    out["active_policy"] = reg->active_policy;
+    auto& policies = out["policies"];
+    for (auto&& [name, ptr] : reg->policies)
+    {
+        policies[std::string{name}] = {
+            {"icon", ptr->icon()},
+            {"label", ptr->label()},
+            {"description", ptr->description()}
+        };
+    }
+    return out;
+});
+
+auto activate_policy_rpc = www::rpc::post<std::string>("activate_policy", [](const std::string& name) {
+    auto reg = registry::lock();
+    reg->active_policy.edit() = name;
+});
+
+struct sigsuppress_type
+{
+    sigsuppress_type()
+    {
+        sigaddset(&sigset, SIGTERM);
+        sigaddset(&sigset, SIGINT);
+        sigprocmask(SIG_BLOCK, &sigset, nullptr);
+    }
+    sigset_t sigset = {};
+} sigsuppress;
+
 } // anonymous namespace
 
 producer::producer(std::string_view _name)
@@ -50,8 +90,8 @@ producer::producer(std::string_view _name)
 {
     auto reg = registry::lock();
     auto it = reg->producers.find(name());
-    if (it != reg->producers.end()) reg->producers.erase(it);
     logfinfo("%s producer %s", it == reg->producers.end() ? "Register" : "Overrule", name());
+    if (it != reg->producers.end()) reg->producers.erase(it);
     reg->producers.emplace(name(), this);
 }
 
@@ -65,32 +105,16 @@ producer::~producer()
     reg->producers.erase(it);
 }
 
-std::vector<std::string> policy::list()
-{
-    auto reg = registry::lock();
-    std::vector<std::string> policynames;
-    for (auto&& [name, p] : reg->policies)
-        policynames.emplace_back(name);
-    return policynames;
-}
-
-void policy::activate(std::string_view name)
-{
-    auto reg = registry::lock();
-    reg->active_policy.edit() = std::string{name};
-    logfinfo("Activating %spolicy %s", reg->policies.find(name) == reg->policies.end() ? "unknown " : "", name);
-}
-
 policy::policy(std::string_view _name)
 : m_name(_name)
 {
     auto reg = registry::lock();
     auto it = reg->policies.find(name());
-    if (it != reg->policies.end()) reg->policies.erase(it);
     logfinfo("%s %spolicy %s",
             it == reg->policies.end() ? "Register" : "Overrule",
             name() == reg->active_policy.get() ? "currently active " : "",
             name());
+    if (it != reg->policies.end()) reg->policies.erase(it);
     reg->policies.emplace(name(), this);
 }
 
@@ -109,8 +133,8 @@ consumer::consumer(std::string_view _name)
 {
     auto reg = registry::lock();
     auto it = reg->consumers.find(name());
-    if (it != reg->consumers.end()) reg->consumers.erase(it);
     logfinfo("%s consumer %s", it == reg->consumers.end() ? "Register" : "Overrule", name());
+    if (it != reg->consumers.end()) reg->consumers.erase(it);
     reg->consumers.emplace(name(), this);
 }
 
@@ -138,22 +162,12 @@ int main(int argc, const char **argv)
         config::set_param(name, *argv);
     }
 
-    sigset_t sigset = {};
-    sigaddset(&sigset, SIGTERM);
-    sigaddset(&sigset, SIGINT);
-    sigprocmask(SIG_BLOCK, &sigset, nullptr);
     auto t0 = std::chrono::system_clock::now();
     auto interval_config = config::param{"interval", 1000};
     auto interval = std::chrono::milliseconds{interval_config};
-    auto budget_log_threshold = config::param<double>{"budget_log_threshold", 0.9};
+    std::string active_policy;
 
     situation sit;
-    budget b, bprev;
-
-    {
-        auto reg = registry::lock();
-        logfinfo("Starting up with %spolicy %s", reg->policies.find(reg->active_policy.get()) == reg->policies.end() ? "unknown " : "", reg->active_policy.get());
-    }
 
     do
     {
@@ -161,20 +175,20 @@ int main(int argc, const char **argv)
         for (auto&& [name, producer] : reg->producers)
             producer->poll(sit);
         auto policy_it = reg->policies.find(reg->active_policy.get());
-        if (policy_it != reg->policies.end())
-            b = policy_it->second->apply(sit);
-        if (abs(b.current - bprev.current) > budget_log_threshold)
+        if (reg->active_policy.get() != active_policy)
         {
-            logfdebug("Budget updated to %.1f A", b.current);
-            bprev = b;
+            logfinfo("Activating %spolicy %s", policy_it == reg->policies.end() ? "unknown " : "", reg->active_policy.get());
+            active_policy = reg->active_policy.get();
         }
+        if (policy_it != reg->policies.end())
+            reg->current_budget = policy_it->second->apply(sit);
         for (auto&& [name, consumer] : reg->consumers)
-            consumer->handle(b, sit);
+            consumer->handle(reg->current_budget, sit);
     } while ([&] {
         auto t1 = std::chrono::system_clock::now();
         if (t1 > t0 + interval) logfwarn("Finished current interval late: it took %s", duration_cast<std::chrono::milliseconds>(t1 - t0));
         t0 = std::max(t1, t0 + interval);
         timespec ts = { decltype(ts.tv_sec)((t0 - t1) / 1s), decltype(ts.tv_nsec)((t0 - t1) % 1s / 1ns) };
-        return sigtimedwait(&sigset, nullptr, &ts) < 0;
+        return sigtimedwait(&sigsuppress.sigset, nullptr, &ts) < 0;
     }());
 }

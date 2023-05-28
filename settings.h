@@ -12,6 +12,8 @@ class object_base
 {
 protected:
     object_base(std::string_view name) : m_name(name) {}
+    object_base(const object_base&) = delete;
+    object_base& operator=(const object_base&) = delete;
     virtual ~object_base() {}
 
     void load();

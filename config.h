@@ -15,6 +15,8 @@ public:
     virtual std::string parse(std::string_view text) = 0;
 protected:
     param_base(std::string_view name);
+    param_base(const param_base&) = delete;
+    param_base& operator=(const param_base&) = delete;
     void init();
     virtual ~param_base();
 private:
