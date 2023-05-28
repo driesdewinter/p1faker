@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="weather-icons.min.css">
+<link rel="stylesheet" href="index.css">
+<script src="index.js"></script>
+</head>
+<body>
+<div class="window">
+    <div class="viewport">
+        <div class="page">
+            <div class="dropdown">
+                <button id="dropDownHeadNow" onclick="showDropDown('dropDownListNow')" class="dropbtn selected"><i class="wi wi-alien"></i>Offline</button>
+                <div id="dropDownListNow" class="dropdown-content">
+                </div>
+            </div>
+            <div>
+                <div id="schedule-on" class="schedule-alt">
+                    <p>... en schakel automatisch naar ...</p>
+                    <div class="dropdown">
+                        <button id="dropDownHeadLater" onclick="showDropDown('dropDownListLater')" class="dropbtn selected"><i class="wi wi-alien"></i>Offline</button>
+                        <div id="dropDownListLater" class="dropdown-content">
+                        </div>
+                    </div>
+                    <p>... na <input class="number" type="text" value="2" onchange="console.log('hello')"></input> uur.</p>
+                </div>
+                <div id="schedule-off" class="schedule-alt">
+                    <p><a href="#" onclick="activateSchedule();return false;">Voor onbepaalde tijd</a></p>
+                </div>
+            </div>
+
+            <div class="detail" id="detail">
+                Kan geen verbinding maken met het systeem.
+            </div>
+
+        </div>
+    </div>
+    <div class="footer">
+        <p>
+        Huidige marge voor laden: <span id="curcap">0</span> W
+        <p>
+    </div>
+</div>
+</body>
+</html>
+
