@@ -101,9 +101,6 @@ void config::set_param(std::string_view _name, std::string_view value)
     }
 }
 
-param_base::param_base(std::string_view n)
-: m_name(n) {}
-
 void param_base::init()
 {
     auto reg = get_registry();

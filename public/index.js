@@ -29,12 +29,12 @@ window.onclick = function(event) {
     hideDropDowns();
 }
 
-var policies = {}
-var active_policy = "";
+var policies = {};
+var settings = {};
 
-function displayPolicy(name) {
-    active_policy = name;
-    const policy = policies[name];
+function displayPolicy(index) {
+    settings.active_policy = index;
+    const policy = policies[index];
     for (id of ["dropDownHeadNow", "dropDownHeadLater"]) {
 	    dropDownHead = document.getElementById(id);
 	    dropDownHead.innerHTML = '<i class="wi ' + policy.icon + '"></i>' + policy.label;
@@ -44,52 +44,60 @@ function displayPolicy(name) {
 	deactivateSchedule();
 }
 
-function activatePolicy(a) {
-    const name = a.id;
-    console.log("activatePolicy " + name);
+function activatePolicy(index) {
+    console.log("activatePolicy " + index);
     var req = new XMLHttpRequest();
     req.onreadystatechange = function() { 
-        if (req.readyState == 4 && req.status == 200)
-            displayPolicy(name);
+        if (req.readyState == 4 && req.status == 204)
+            displayPolicy(index);
     }
-    req.open("POST", "/api/activate_policy", true); // true for asynchronous 
+    req.open("POST", "/api/settings", true); // true for asynchronous 
     req.setRequestHeader("Content-Type", "application/json");
-    req.send(JSON.stringify(name));
+    req.send(JSON.stringify({active_policy: index}));
 }
 
-function setNextPolicy(a) {
-    const name = a.id;
-    const policy = policies[name];
-    console.log("setNextPolicy " + name);
+function setNextPolicy(index) {
+    const policy = policies[index];
+    console.log("setNextPolicy " + index);
     dropDownHead = document.getElementById("dropDownHeadLater");
     dropDownHead.innerHTML = '<i class="wi ' + policy.icon + '"></i>' + policy.label;
-    if (name == active_policy)
+    if (index == settings.active_policy)
         deactivateSchedule();
 }
 
-var initreq = new XMLHttpRequest();
-initreq.onreadystatechange = function() {
-    if (initreq.readyState == 4 && initreq.status == 200)
+var policiesreq = new XMLHttpRequest();
+policiesreq.open("GET", "/api/policies", true); // true for asynchronous 
+policiesreq.onreadystatechange = function() { 
+    if (policiesreq.readyState == 4 && policiesreq.status == 200)
     {
-        dropDownListNow = document.getElementById("dropDownListNow");
-        dropDownListLater = document.getElementById("dropDownListLater");
-        obj = JSON.parse(initreq.responseText);
-        policies = obj.policies;
-        for (const name in policies) {
-        	const policy = policies[name];
-        	console.log(name + ": " + policy);
+        var dropDownListNow = document.getElementById("dropDownListNow");
+        var dropDownListLater = document.getElementById("dropDownListLater");
+        policylist = JSON.parse(policiesreq.responseText);
+        for (const policy of policylist) {
+            policies[policy.index] = policy;
+	        console.log(policy.index + ": " + policy);
             dropDownListNow.insertAdjacentHTML('beforeend', 
-                '<a onclick="activatePolicy(this)" id="' + name + '">' +
+                '<a onclick="activatePolicy(' + policy.index + ')">' +
                 '<i class="wi ' + policy.icon + '"></i>' + policy.label + '</a>');
             dropDownListLater.insertAdjacentHTML('beforeend', 
-                '<a onclick="setNextPolicy(this)" id="' + name + '">' +
+                '<a onclick="setNextPolicy(' + policy.index + ')">' +
                 '<i class="wi ' + policy.icon + '"></i>' + policy.label + '</a>');
         }
-        displayPolicy(obj.active_policy);
+        
+        var settingsreq = new XMLHttpRequest();
+        settingsreq.open("GET", "/api/settings", true); // true for asynchronous 
+        settingsreq.onreadystatechange = function() { 
+            if (settingsreq.readyState == 4 && settingsreq.status == 200)
+            {
+                settings = JSON.parse(settingsreq.responseText);
+                displayPolicy(settings.active_policy);
+            }
+        }
+        settingsreq.send(null);
     }
-}
-initreq.open("GET", "/api/policies", true); // true for asynchronous 
-initreq.send(null);
+};
+policiesreq.send(null);
+
 
 function refresh() {
     var req = new XMLHttpRequest();

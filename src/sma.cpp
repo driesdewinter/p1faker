@@ -163,7 +163,7 @@ struct producer_impl : core::producer
             auto t2 = std::chrono::system_clock::now();
             if (t2 - t0 > 500ms)
             {
-                logfwarn("sma: read took %s, write took %s", t2 - t1, t1 - t0);
+                logfwarn("sma: read took %s, write took %s", duration_cast<std::chrono::milliseconds>(t2 - t1), duration_cast<std::chrono::milliseconds>(t1 - t0));
             }
             const modbus_response& response = *reinterpret_cast<const modbus_response*>(raw_response.begin());
             response.validate(received, request);

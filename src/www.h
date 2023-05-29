@@ -28,6 +28,7 @@ public:
         auto operator<=>(const key&) const = default;
     };
 
+    /** Register nullary handler for GET-request. Return value is serialized to JSON in response body. */
     template<typename F>
     static rpc get(std::string name, F&& handler)
     {
@@ -37,6 +38,12 @@ public:
         });
         return result;
     }
+
+    /**
+     * Register unary handler for POST-request.
+     * The type of the argument needs to be specified as template argument
+     * It is deserialized from JSON found in request body.
+     * Return value of handler is ignored, 204 No Content is returned as response. */
     template<typename Request, typename F>
     static rpc post(std::string name, F&& handler)
     {
@@ -47,6 +54,7 @@ public:
         return result;
     }
 
+    rpc() = default;
     rpc(rpc&& r) : m_key(r.m_key) { move(r); }
     rpc& operator=(rpc&& r) { m_key = r.m_key; move(r); return *this; }
     rpc(const rpc&) = delete;

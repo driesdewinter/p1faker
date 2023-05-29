@@ -30,21 +30,23 @@ struct registry
         return instance.lock();
     }
 
-    std::map<std::string_view, producer*> producers;
-    std::map<std::string_view, policy*> policies;
-    std::map<std::string_view, consumer*> consumers;
-    config::param<std::string> default_policy{"default_policy", ""};
+    std::map<int, producer*> producers;
+    std::map<int, policy*> policies;
+    std::map<int, consumer*> consumers;
     config::param<double> standard_voltage{"standard_voltage", 230.0};
-    settings::object<std::string> active_policy;
+    settings::param<int> active_policy{"active_policy", 0};
     budget current_budget;
 
 private:
-    registry()
-    : active_policy{"active_policy", default_policy.get()}
-    {}
+    registry() {}
 
     friend class mutex_protected<registry>;
 };
+
+template<typename T>
+int next_id(const std::map<int, T>& map) {
+    return map.empty() ? 0 : map.rbegin()->first + 1;
+}
 
 auto curcap_rpc = www::rpc::get("curcap", [] {
     auto reg = registry::lock();
@@ -53,23 +55,18 @@ auto curcap_rpc = www::rpc::get("curcap", [] {
 
 auto policies_rpc = www::rpc::get("policies", [] {
     auto reg = registry::lock();
-    nlohmann::json out;
-    out["active_policy"] = reg->active_policy;
-    auto& policies = out["policies"];
-    for (auto&& [name, ptr] : reg->policies)
+    nlohmann::json policies;
+    for (auto&& [index, ptr] : reg->policies)
     {
-        policies[std::string{name}] = {
+        policies.push_back({
+            {"index", index},
+            {"name", ptr->name()},
             {"icon", ptr->icon()},
             {"label", ptr->label()},
             {"description", ptr->description()}
-        };
+        });
     }
-    return out;
-});
-
-auto activate_policy_rpc = www::rpc::post<std::string>("activate_policy", [](const std::string& name) {
-    auto reg = registry::lock();
-    reg->active_policy.edit() = name;
+    return policies;
 });
 
 struct sigsuppress_type
@@ -89,63 +86,48 @@ producer::producer(std::string_view _name)
 : m_name(_name)
 {
     auto reg = registry::lock();
-    auto it = reg->producers.find(name());
-    logfinfo("%s producer %s", it == reg->producers.end() ? "Register" : "Overrule", name());
-    if (it != reg->producers.end()) reg->producers.erase(it);
-    reg->producers.emplace(name(), this);
+    m_index = next_id(reg->producers);
+    logfdebug("Register producer %s", name());
+    reg->producers.emplace(m_index, this);
 }
 
 producer::~producer()
 {
     auto reg = registry::lock();
-    auto it = reg->producers.find(name());
-    if (it == reg->producers.end()) return;
-    if (it->second != this) return; // this producer might have been overruled in the meantime, so no guarantee that we find ourselves.
-    logfinfo("Unregister producer %s", name());
-    reg->producers.erase(it);
+    logfdebug("Unregister producer %s (index %d)", name(), m_index);
+    reg->producers.erase(m_index);
 }
 
 policy::policy(std::string_view _name)
 : m_name(_name)
 {
     auto reg = registry::lock();
-    auto it = reg->policies.find(name());
-    logfinfo("%s %spolicy %s",
-            it == reg->policies.end() ? "Register" : "Overrule",
-            name() == reg->active_policy.get() ? "currently active " : "",
-            name());
-    if (it != reg->policies.end()) reg->policies.erase(it);
-    reg->policies.emplace(name(), this);
+    m_index = next_id(reg->policies);
+    logfdebug("Register policy %s (index %d)", name(), m_index);
+    reg->policies.emplace(m_index, this);
 }
 
 policy::~policy()
 {
     auto reg = registry::lock();
-    auto it = reg->policies.find(name());
-    if (it == reg->policies.end()) return;
-    if (it->second != this) return; // this policy might have been overruled in the meantime, so no guarantee that we find ourselves.
-    logfinfo("Unregister %spolicy %s", name() == reg->active_policy.get() ? "currently active " : "", name());
-    reg->policies.erase(it);
+    logfdebug("Unregister policy %s (index %d)", name(), m_index);
+    reg->producers.erase(m_index);
 }
 
 consumer::consumer(std::string_view _name)
 : m_name(_name)
 {
     auto reg = registry::lock();
-    auto it = reg->consumers.find(name());
-    logfinfo("%s consumer %s", it == reg->consumers.end() ? "Register" : "Overrule", name());
-    if (it != reg->consumers.end()) reg->consumers.erase(it);
-    reg->consumers.emplace(name(), this);
+    m_index = next_id(reg->consumers);
+    logfdebug("Register consumer %s (index %d)", name(), m_index);
+    reg->consumers.emplace(m_index, this);
 }
 
 consumer::~consumer()
 {
     auto reg = registry::lock();
-    auto it = reg->consumers.find(name());
-    if (it == reg->consumers.end()) return;
-    if (it->second != this) return; // this producer might have been overruled in the meantime, so no guarantee that we find ourselves.
-    logfinfo("Unregister consumer %s", name());
-    reg->consumers.erase(it);
+    logfdebug("Unregister consumer %s (index %d)", name(), m_index);
+    reg->consumers.erase(m_index);
 }
 
 int main(int argc, const char **argv)
@@ -165,7 +147,7 @@ int main(int argc, const char **argv)
     auto t0 = std::chrono::system_clock::now();
     auto interval_config = config::param{"interval", 1000};
     auto interval = std::chrono::milliseconds{interval_config};
-    std::string active_policy;
+    int active_policy = -1;
 
     situation sit;
 
@@ -177,7 +159,7 @@ int main(int argc, const char **argv)
         auto policy_it = reg->policies.find(reg->active_policy.get());
         if (reg->active_policy.get() != active_policy)
         {
-            logfinfo("Activating %spolicy %s", policy_it == reg->policies.end() ? "unknown " : "", reg->active_policy.get());
+            logfinfo("Activating policy %s", policy_it == reg->policies.end() ? std::string_view{"null"} : policy_it->second->name());
             active_policy = reg->active_policy.get();
         }
         if (policy_it != reg->policies.end())

@@ -150,13 +150,23 @@ void handle_request(http::request<Body, http::basic_fields<Allocator>>&& req, Re
             return bad_request(e.what());
         }
 
-        http::response<http::string_body> res{http::status::ok, req.version()};
-        res.set(http::field::server, http_server);
-        res.set(http::field::content_type, "application/json");
-        res.keep_alive(req.keep_alive());
-        res.body() = out.dump();
-        res.prepare_payload();
-        return response_handler(std::move(res));
+        if (out.is_null())
+        {
+            http::response<http::string_body> res{http::status::no_content, req.version()};
+            res.set(http::field::server, http_server);
+            res.keep_alive(req.keep_alive());
+            return response_handler(std::move(res));
+        }
+        else
+        {
+            http::response<http::string_body> res{http::status::ok, req.version()};
+            res.set(http::field::server, http_server);
+            res.set(http::field::content_type, "application/json");
+            res.keep_alive(req.keep_alive());
+            res.body() = out.dump();
+            res.prepare_payload();
+            return response_handler(std::move(res));
+        }
     }
 
     // Make sure we can handle the method

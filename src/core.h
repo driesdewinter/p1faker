@@ -53,6 +53,7 @@ protected:
     virtual ~producer();
 private:
     const std::string m_name;
+    int m_index;
 };
 
 struct policy
@@ -70,6 +71,7 @@ protected:
     virtual ~policy();
 private:
     const std::string m_name;
+    int m_index;
 };
 
 struct consumer
@@ -83,6 +85,7 @@ protected:
     virtual ~consumer();
 private:
     const std::string m_name;
+    int m_index;
 };
 
 } // namespace core

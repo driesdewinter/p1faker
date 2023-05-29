@@ -7,7 +7,7 @@ namespace
 
 struct red_impl : core::policy
 {
-    red_impl() : core::policy("00red") {}
+    red_impl() : core::policy("red") {}
 
     virtual std::string_view icon() const { return "wi-lightning"; }
     virtual std::string_view label() const { return "Volle kracht"; }
@@ -28,9 +28,12 @@ struct red_impl : core::policy
     config::param<double> m_max_current{"max_current", 0.0};
 } red;
 
+// Extra budget offset for compensating safety margin or rounding errors of charge point
+config::param<double> budget_current_offset = {"budget_current_offset", 1.0};
+
 struct orange_impl : core::policy
 {
-    orange_impl() : core::policy("01orange") {}
+    orange_impl() : core::policy("orange") {}
 
     virtual std::string_view icon() const { return "wi-cloudy"; }
     virtual std::string_view label() const { return "Beperkte capaciteit"; }
@@ -52,7 +55,7 @@ struct orange_impl : core::policy
         auto grid_voltage = std::accumulate(sit.ac.begin(), sit.ac.end(), 0.0,
                                 [](double sum, const auto& ac) { return sum + ac.voltage; }) / sit.ac.size();
         auto budget_power = m_max_capacity.get() - grid_power;
-        auto budget_current = budget_power / grid_voltage / sit.ac.size();
+        auto budget_current = budget_current_offset.get() + budget_power / grid_voltage / sit.ac.size();
 
         // in case of very unbalanced load, the red policy might set a stronger constraint.
         // follow the red policy in that case - otherwise we're risking a power failure.
@@ -64,9 +67,13 @@ struct orange_impl : core::policy
     config::param<double> m_max_capacity{"max_capacity", 8000.0};
 } orange;
 
+config::param<double> battery_max_power("battery_max_power", 5000.0);
+config::param<double> inverter_max_power("inverter_max_power", 8000.0);
+config::param<double> real_feeding_threshold = {"real_feeding_threshold", 1000.0};
+
 struct yellow_impl : core::policy
 {
-    yellow_impl() : core::policy("02yellow") {}
+    yellow_impl() : core::policy("yellow") {}
 
     virtual std::string_view icon() const { return "wi-day-cloudy"; }
     virtual std::string_view label() const { return "Maximaliseer eigen verbruik"; }
@@ -77,7 +84,7 @@ struct yellow_impl : core::policy
             "terwijl we die zelf ook goed kunnen gebruiken.</p>"
             "<p>Concreet: alle opgewekte zonne-energie staat ter beschikking van huishouden en laadpunt. "
             "Ook als het niveau van de thuisbatterij meer dan <input class=\"number\" type=\"text\" value=\"10\"></input> % is, "
-            "mag deze tot <input class=\"number\" type=\"text\" value=\"5000\"></input> W leveren.</p>"
+            "mag deze al beginnen leveren.</p>"
             "<p>Door het niveau van de thuisbatterij laag te houden, maximaliseren we het eigen "
             "verbruik: als de wagen stopt met laden omdat hij ontkoppeld wordt of omdat het mimimum "
             "vermogen om te beginnen laden niet gehaald wordt, dan kan de opgewekte energie "
@@ -85,25 +92,38 @@ struct yellow_impl : core::policy
             "</ul>";
     }
 
-    config::param<double> lift_budget_to = {"alpha.lift_budget_to", 8.0};
-    config::param<double> lift_budget_min = {"alpha.lift_budget_min", 4.0};
-    config::param<double> tolerance = {"alpha.tolerance", 1.0};
+    config::param<double> battery_threshold = {"yellow.battery_threshold", 0.1};
 
     core::budget apply(const core::situation& sit)
     {
-        double avgac = std::accumulate(sit.ac.begin(), sit.ac.end(), 0.0,
-                [](double sum, const auto& ac) { return sum + ac.current; }) / sit.ac.size();
-        core::budget b;
-        if      (avgac < -lift_budget_to.get())  b.current = tolerance.get() - avgac;
-        else if (avgac < -lift_budget_min.get()) b.current = tolerance.get() + lift_budget_to.get();
-        else                                     b.current = tolerance.get() - avgac;
-        return b;
+        auto grid_power = std::accumulate(sit.ac.begin(), sit.ac.end(), 0.0,
+                        [](double sum, const auto& ac) { return sum + ac.current * ac.voltage; });
+        auto grid_voltage = std::accumulate(sit.ac.begin(), sit.ac.end(), 0.0,
+                                [](double sum, const auto& ac) { return sum + ac.voltage; }) / sit.ac.size();
+
+        // primary budget = what we're feeding into the grid
+        auto budget_power = -grid_power;
+
+        if (sit.battery_state > battery_threshold.get())
+        {
+            // battery level above threshold -> allow maximum discharging
+            auto extra_discharging_budget = inverter_max_power.get() - sit.inverter_output;
+            auto extra_discharging_capacity = battery_max_power.get() - sit.battery_output;
+            budget_power += std::min(extra_discharging_budget, extra_discharging_capacity);
+        }
+        else if (sit.battery_output < 0.0)
+        {
+            // battery low but charging -> energy that goes into battery is available for charge point.
+            budget_power -= sit.battery_output;
+        }
+
+        return core::budget{budget_current_offset.get() + budget_power / grid_voltage / sit.ac.size()};
     }
 } yellow;
 
 struct green_impl : core::policy
 {
-    green_impl() : core::policy("03green") {}
+    green_impl() : core::policy("green") {}
 
     virtual std::string_view icon() const { return "wi-day-sunny"; }
     virtual std::string_view label() const { return "Minimaliseer afname"; }
@@ -115,19 +135,35 @@ struct green_impl : core::policy
             "<input class=\"number\" type=\"text\" value=\"90\"></input> % zakt.</p>";
     }
 
-    config::param<double> lift_budget_to = {"alpha.lift_budget_to", 8.0};
-    config::param<double> lift_budget_min = {"alpha.lift_budget_min", 4.0};
-    config::param<double> tolerance = {"alpha.tolerance", 1.0};
+    config::param<double> battery_threshold = {"green.battery_threshold", 0.9};
 
     core::budget apply(const core::situation& sit)
     {
-        double avgac = std::accumulate(sit.ac.begin(), sit.ac.end(), 0.0,
-                [](double sum, const auto& ac) { return sum + ac.current; }) / sit.ac.size();
-        core::budget b;
-        if      (avgac < -lift_budget_to.get())  b.current = tolerance.get() - avgac;
-        else if (avgac < -lift_budget_min.get()) b.current = tolerance.get() + lift_budget_to.get();
-        else                                     b.current = tolerance.get() - avgac;
-        return b;
+        auto grid_power = std::accumulate(sit.ac.begin(), sit.ac.end(), 0.0,
+                        [](double sum, const auto& ac) { return sum + ac.current * ac.voltage; });
+        auto grid_voltage = std::accumulate(sit.ac.begin(), sit.ac.end(), 0.0,
+                                [](double sum, const auto& ac) { return sum + ac.voltage; }) / sit.ac.size();
+
+        // primary budget = what we're feeding into the grid
+        auto budget_power = -grid_power;
+
+        if (budget_power >= real_feeding_threshold.get())
+        {
+            // if we are steadily feeding into the grid, but not enough to start charging,
+            // we might want to start charging car anyway, partly using battery power.
+            // this is to avoid that we're feeding into the grid all day long and never start charging
+            // just because there is slightly too little solar power.
+            auto extra_discharging_budget = inverter_max_power.get() - sit.inverter_output;
+            auto extra_discharging_capacity = battery_max_power.get() - sit.battery_output;
+            budget_power += std::min(extra_discharging_budget, extra_discharging_capacity);
+        }
+        else if (sit.battery_state < battery_threshold.get())
+        {
+            // battery level below threshold -> stop discharging and start charging at maximum power.
+            budget_power -= battery_max_power.get() + sit.battery_output;
+        }
+
+        return core::budget{budget_current_offset.get() + budget_power / grid_voltage / sit.ac.size()};
     }
 } green;
 
