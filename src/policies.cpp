@@ -5,7 +5,6 @@
 namespace
 {
 
-
 struct red_impl : core::policy
 {
     red_impl() : core::policy("red") {}
@@ -23,9 +22,9 @@ struct red_impl : core::policy
 
     core::budget apply(const core::situation& sit)
     {
-        auto maxac = std::max_element(sit.ac.begin(), sit.ac.end(),
+        auto maxphase = std::max_element(sit.grid.begin(), sit.grid.end(),
                 [](const auto& l, const auto& r) { return l.current < r.current; });
-        return {m_max_current.get() - maxac->current};
+        return {m_max_current.get() - maxphase->current};
     }
 
     settings::param<double> m_max_current{"max_current", 0.0};
@@ -53,12 +52,8 @@ struct orange_impl : core::policy
 
     core::budget apply(const core::situation& sit)
     {
-        auto grid_power = std::accumulate(sit.ac.begin(), sit.ac.end(), 0.0,
-                        [](double sum, const auto& ac) { return sum + ac.current * ac.voltage; });
-        auto grid_voltage = std::accumulate(sit.ac.begin(), sit.ac.end(), 0.0,
-                                [](double sum, const auto& ac) { return sum + ac.voltage; }) / sit.ac.size();
-        auto budget_power = m_max_capacity.get() - grid_power;
-        auto budget_current = budget_power / grid_voltage / sit.ac.size();
+        auto budget_power = m_max_capacity.get() - sit.grid_output();
+        auto budget_current = budget_power / sit.grid_voltage() / sit.grid.size();
 
         // in case of very unbalanced load, the red policy might set a stronger constraint.
         // follow the red policy in that case - otherwise we're risking a power failure.
@@ -101,13 +96,8 @@ struct yellow_impl : core::policy
 
     core::budget apply(const core::situation& sit)
     {
-        auto grid_power = std::accumulate(sit.ac.begin(), sit.ac.end(), 0.0,
-                        [](double sum, const auto& ac) { return sum + ac.current * ac.voltage; });
-        auto grid_voltage = std::accumulate(sit.ac.begin(), sit.ac.end(), 0.0,
-                                [](double sum, const auto& ac) { return sum + ac.voltage; }) / sit.ac.size();
-
         // primary budget = what we're feeding into the grid
-        auto budget_power = -grid_power;
+        auto budget_power = -sit.grid_output();
 
         if (sit.battery_state > m_battery_threshold.get() / 100.0)
         {
@@ -122,7 +112,7 @@ struct yellow_impl : core::policy
             budget_power -= sit.battery_output;
         }
 
-        return core::budget{budget_power / grid_voltage / sit.ac.size()};
+        return core::budget{budget_power / sit.grid_voltage() / sit.grid.size()};
     }
 } yellow;
 
@@ -146,13 +136,8 @@ struct green_impl : core::policy
 
     core::budget apply(const core::situation& sit)
     {
-        auto grid_power = std::accumulate(sit.ac.begin(), sit.ac.end(), 0.0,
-                        [](double sum, const auto& ac) { return sum + ac.current * ac.voltage; });
-        auto grid_voltage = std::accumulate(sit.ac.begin(), sit.ac.end(), 0.0,
-                                [](double sum, const auto& ac) { return sum + ac.voltage; }) / sit.ac.size();
-
         // primary budget = what we're feeding into the grid
-        auto budget_power = -grid_power;
+        auto budget_power = -sit.grid_output();
 
         if (budget_power >= real_feeding_threshold.get() and sit.battery_state > m_battery_threshold.get() / 100.0)
         {
@@ -170,11 +155,8 @@ struct green_impl : core::policy
             budget_power -= battery_max_power.get() + sit.battery_output;
         }
 
-        return core::budget{budget_power / grid_voltage / sit.ac.size()};
+        return core::budget{budget_power / sit.grid_voltage() / sit.grid.size()};
     }
 } green;
 
-
 }
-
-

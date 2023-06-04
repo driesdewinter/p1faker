@@ -35,12 +35,12 @@ struct producer_impl : core::producer
     {
         if (auto reg = m_conn.read_holding_registers(unit_id, grid_voltage_l1, 18))
         {
-            for (size_t i = 0; i < core::phase::count; i++)
+            for (size_t i = 0; i < sit.grid.size(); i++)
             {
-                sit.ac[i].voltage = reg->get<uint32_t>(grid_voltage_l1 + i * 2) / 100.0;
-                sit.ac[i].current = (   1.0 * reg->get<uint32_t>(power_grid_drawn_l1 + i * 2)
+                sit.grid[i].voltage = reg->get<uint32_t>(grid_voltage_l1 + i * 2) / 100.0;
+                sit.grid[i].current = ( 1.0 * reg->get<uint32_t>(power_grid_drawn_l1 + i * 2)
                                       - 1.0 * reg->get<uint32_t>(power_grid_feeding_l1 + i * 2)
-                                    ) / sit.ac[i].voltage;
+                                      ) / sit.grid[i].voltage;
             }
         }
         if (auto reg = m_conn.read_holding_registers(unit_id, battery_state_of_charge, 2))

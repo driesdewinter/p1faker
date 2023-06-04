@@ -145,6 +145,9 @@ int main(int argc, const char **argv)
     situation sit;
     budget b;
 
+    auto phase_config = config::param{"phases", 3};
+    sit.grid.resize(phase_config);
+
     do
     {
         auto reg = registry::lock();

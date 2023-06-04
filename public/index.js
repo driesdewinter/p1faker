@@ -130,4 +130,25 @@ function refresh() {
 }
 refresh();
 
+function refreshP1Status() {
+    var req = new XMLHttpRequest();
+    req.onreadystatechange = function() { 
+        if (req.readyState == 4)
+        {
+            if (req.status == 200)
+            {
+                var p1status = JSON.parse(req.responseText)
+                if (p1status) 
+                    document.getElementById("p1status").innerHTML = ""
+                else
+                    document.getElementById("p1status").innerHTML = "<br/>Niet verbonden met laadpunt"
+            }
+            setTimeout(refreshP1Status, 2500);
+        }
+    }
+    req.open("GET", "/api/p1status", true); // true for asynchronous 
+    req.send(null);
+}
+refreshP1Status();
+
 

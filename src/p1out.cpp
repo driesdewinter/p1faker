@@ -1,6 +1,9 @@
 #include "core.h"
 #include "config.h"
 #include "logf.h"
+#include "www.h"
+
+#include <fstream>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -145,5 +148,19 @@ struct consumer_impl : core::consumer
     int m_write_errno = 0;
     std::string m_p1template;
 } impl;
+
+www::rpc p1status = www::rpc::get("p1status", [] {
+    static config::param<std::string> path{"p1status.path", "/sys/class/gpio/gpio2/value"};
+    std::ifstream fin{path.get()};
+    if (not fin.is_open())
+    {
+        logfdebug("Could not open config file %s", path);
+        return false;
+    }
+    bool result;
+    fin >> result;
+    result = !result; // inverted due to opto coupler
+    return result;
+});
 
 } // anonymous namespace

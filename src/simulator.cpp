@@ -6,10 +6,10 @@
 namespace
 {
 
-config::param<int> default_car_min_power{"simulator.car_min_power", 6000};
-config::param<int> default_car_max_power{"simulator.car_max_power", 11000};
-config::param<int> default_inverter_max_power{"simulator.inverter_max_power", 8000};
-config::param<int> default_battery_max_power{"simulator.battery_max_power", 5000};
+config::param<int> default_car_min_power{"simulator.car_min_power", 2000};
+config::param<int> default_car_max_power{"simulator.car_max_power", 7000};
+config::param<int> default_inverter_max_power{"inverter_max_power", 8000};
+config::param<int> default_battery_max_power{"battery_max_power", 5000};
 
 struct simulator : core::producer, core::consumer
 {
@@ -22,13 +22,13 @@ struct simulator : core::producer, core::consumer
             int battery_max_power = default_battery_max_power.get();
             int battery_state = 50;
             int solar_power = 0;
-            std::array<int, core::phase::count> house_power = {300, 100, 100};
+            std::vector<int> house_power;
         };
         struct output
         {
             int car_power = 0;
             int battery_output = 0;
-            std::array<int, core::phase::count> grid_power = {0, 0, 0};
+            std::vector<int> grid_power;
         };
         input i;
         output o;
@@ -53,9 +53,11 @@ struct simulator : core::producer, core::consumer
     void poll(core::situation& sit) override
     {
         auto s = m_state.lock();
-        for (std::size_t phase = 0; phase < core::phase::count; phase++)
+        s->i.house_power.resize(sit.grid.size());
+        s->o.grid_power.resize(sit.grid.size());
+        for (std::size_t phase = 0; phase < sit.grid.size(); phase++)
         {
-            s->o.grid_power[phase] = s->i.house_power[phase] + (s->o.car_power - s->i.solar_power) / int(sit.ac.size());
+            s->o.grid_power[phase] = s->i.house_power[phase] + (s->o.car_power - s->i.solar_power) / int(sit.grid.size());
         }
         int grid_power = std::accumulate(s->o.grid_power.begin(), s->o.grid_power.end(), 0);
 
@@ -75,19 +77,17 @@ struct simulator : core::producer, core::consumer
         }
         sit.battery_output = s->o.battery_output;
         sit.inverter_output = sit.battery_output + s->i.solar_power;
-        for (std::size_t phase = 0; phase < core::phase::count; phase++)
+        for (std::size_t phase = 0; phase < sit.grid.size(); phase++)
         {
-            s->o.grid_power[phase] -= s->o.battery_output / int(sit.ac.size());
-            sit.ac[phase].current = s->o.grid_power[phase] / sit.ac[phase].voltage;
+            s->o.grid_power[phase] -= s->o.battery_output / int(sit.grid.size());
+            sit.grid[phase].current = s->o.grid_power[phase] / sit.grid[phase].voltage;
         }
     }
 
     void handle(const core::budget& b, const core::situation& sit) override
     {
         auto s = m_state.lock();
-        auto grid_voltage = std::accumulate(sit.ac.begin(), sit.ac.end(), 0.0,
-                                [](double sum, const auto& ac) { return sum + ac.voltage; }) / sit.ac.size();
-        int car_power = s->o.car_power + int(b.current * grid_voltage * sit.ac.size());
+        int car_power = s->o.car_power + int(b.current * sit.grid_voltage() * sit.grid.size());
         if (car_power > s->i.car_max_power) car_power = s->i.car_max_power;
         if (car_power < s->i.car_min_power) car_power = 0;
         if (s->o.car_power != car_power) logfinfo("Charging car at %s W", car_power);
@@ -110,9 +110,12 @@ void from_json(const nlohmann::json& j, simulator::state::input& s)
     j.at("car_max_power").get_to(s.car_max_power);
     j.at("inverter_max_power").get_to(s.inverter_max_power);
     j.at("battery_max_power").get_to(s.battery_max_power);
-    j.at("house_power_l1").get_to(s.house_power[core::phase::l1]);
-    j.at("house_power_l2").get_to(s.house_power[core::phase::l2]);
-    j.at("house_power_l3").get_to(s.house_power[core::phase::l3]);
+    for (std::size_t i = 0; ; i++)
+    {
+        auto it = j.find(str(boost::format("house_power_l%d") % (i + 1)));
+        if (it == j.end()) break;
+        s.house_power.push_back(it->get<int>());
+    }
 }
 
 void to_json(nlohmann::json& j, const simulator::state::input& s)
@@ -124,10 +127,9 @@ void to_json(nlohmann::json& j, const simulator::state::input& s)
         {"car_max_power", s.car_max_power},
         {"inverter_max_power", s.inverter_max_power},
         {"battery_max_power", s.battery_max_power},
-        {"house_power_l1", s.house_power[core::phase::l1]},
-        {"house_power_l2", s.house_power[core::phase::l2]},
-        {"house_power_l3", s.house_power[core::phase::l3]},
     };
+    for (std::size_t i = 0; i < s.house_power.size(); i++)
+        j[str(boost::format("house_power_l%d") % (i + 1))] = s.house_power[i];
 }
 
 void to_json(nlohmann::json& j, const simulator::state::output& s)
@@ -135,10 +137,9 @@ void to_json(nlohmann::json& j, const simulator::state::output& s)
     j = nlohmann::json{
         {"car_power", s.car_power},
         {"battery_output", s.battery_output},
-        {"grid_power_l1", s.grid_power[core::phase::l1]},
-        {"grid_power_l2", s.grid_power[core::phase::l2]},
-        {"grid_power_l3", s.grid_power[core::phase::l3]},
     };
+    for (std::size_t i = 0; i < s.grid_power.size(); i++)
+        j[str(boost::format("grid_power_l%d") % (i + 1))] = s.grid_power[i];
 }
 
 } // anonymous namespace

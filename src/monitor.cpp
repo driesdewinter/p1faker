@@ -20,9 +20,7 @@ struct monitor : core::consumer
     });
     www::rpc m_curcap = www::rpc::get("curcap", [this] {
         auto s = m_state.lock();
-        auto grid_voltage = std::accumulate(s->situation.ac.begin(), s->situation.ac.end(), 0.0,
-                                [](double sum, const auto& ac) { return sum + ac.voltage; }) / s->situation.ac.size();
-        return int(s->budget.current * grid_voltage * s->situation.ac.size());
+        return int(s->budget.current * s->situation.grid_voltage() * s->situation.grid.size());
     });
 
     monitor() : core::consumer("monitor") {}
@@ -47,14 +45,14 @@ void to_json(nlohmann::json& j, const monitor::state& s)
             {"battery_output", s.situation.battery_output},
             {"solar_output", s.situation.solar_output()},
             {"consumption", s.situation.consumption()},
-            {"ac", [&] {
+            {"grid", [&] {
                 nlohmann::json arr = nlohmann::json::array();
-                for (const auto& ac : s.situation.ac)
+                for (const auto& phase : s.situation.grid)
                 {
                     arr.push_back(nlohmann::json{
-                        {"voltage", ac.voltage},
-                        {"current", ac.current},
-                        {"power", ac.power()}
+                        {"voltage", phase.voltage},
+                        {"current", phase.current},
+                        {"power", phase.power()}
                     });
                 }
                 return arr;
