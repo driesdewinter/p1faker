@@ -8,7 +8,7 @@ add_compile_options(-Wall -Wextra -pthread -Wno-psabi -g)
 find_package(Boost REQUIRED)
 
 add_executable(p1gen src/config.cpp src/logf.cpp src/www.cpp src/settings.cpp src/core.cpp)
-target_sources(p1gen PRIVATE src/p1out.cpp src/sma.cpp src/policies.cpp)
+target_sources(p1gen PRIVATE src/p1out.cpp src/sma.cpp src/policies.cpp src/simulator.cpp)
 target_link_libraries(p1gen PRIVATE pthread)
 
 include(GNUInstallDirs)

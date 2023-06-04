@@ -24,8 +24,8 @@ protected:
     virtual ~param_base();
 
     void load();
-private:
-    std::string m_name;
+
+    const std::string m_name;
 };
 
 template<typename T, typename Parser = config::parser<T>>
@@ -39,6 +39,8 @@ public:
         load();
     }
 
+    std::string_view name() const { return m_name; }
+
     T get() const { return *m_value.lock(); }
     operator T() const { return get(); }
 
@@ -48,6 +50,9 @@ protected:
 private:
     mutex_protected<T> m_value;
 };
+
+// to be used in html to include editable text to display and manipulate that want to include an input field for managing a setting
+std::string html(const param<double>& param);
 
 } // namespace settings
 

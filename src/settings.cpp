@@ -143,3 +143,9 @@ param_base::~param_base()
     if (it != subscribers.end())
         subscribers.erase(it);
 }
+
+std::string settings::html(const param<double>& param)
+{
+    return str(boost::format("<input class=\"number\" type=\"number\" value=\"\" id=\"%s\" onchange=\"changeSetting(this)\"></input>") % param.name());
+}
+

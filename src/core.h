@@ -6,6 +6,8 @@
 #include <string>
 #include <numeric>
 
+#include "settings.h"
+
 namespace core
 {
 
@@ -66,10 +68,10 @@ struct policy
     virtual budget apply(const situation&) = 0;
 
 protected:
-
     policy(std::string_view name);
     virtual ~policy();
 private:
+    static std::string input_field(std::string_view cls, std::string_view id);
     const std::string m_name;
     int m_index;
 };

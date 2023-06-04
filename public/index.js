@@ -42,6 +42,9 @@ function displayPolicy(index) {
 	detail = document.getElementById("detail");
 	detail.innerHTML = policy.description;
 	deactivateSchedule();
+    for (input of detail.getElementsByClassName("number")) {
+  	    input.value = settings[input.id];
+  	}
 }
 
 function activatePolicy(index) {
@@ -63,6 +66,19 @@ function setNextPolicy(index) {
     dropDownHead.innerHTML = '<i class="wi ' + policy.icon + '"></i>' + policy.label;
     if (index == settings.active_policy)
         deactivateSchedule();
+}
+
+function changeSetting(input) {
+    const name = input.id;
+    const value = parseFloat(input.value);
+    console.log("changeSetting " + name + " = " + value);
+    var req = new XMLHttpRequest();
+    req.open("POST", "/api/settings", true); // true for asynchronous 
+    req.setRequestHeader("Content-Type", "application/json");
+    setting = {};
+    setting[name] = value
+    settings[name] = value;
+    req.send(JSON.stringify(setting));
 }
 
 var policiesreq = new XMLHttpRequest();

@@ -33,9 +33,9 @@ struct registry
     std::map<int, producer*> producers;
     std::map<int, policy*> policies;
     std::map<int, consumer*> consumers;
-    config::param<double> standard_voltage{"standard_voltage", 230.0};
     settings::param<int> active_policy{"active_policy", 0};
     budget current_budget;
+    double current_budget_power;
 
 private:
     registry() {}
@@ -50,7 +50,7 @@ int next_id(const std::map<int, T>& map) {
 
 auto curcap_rpc = www::rpc::get("curcap", [] {
     auto reg = registry::lock();
-    return int(reg->current_budget.current * reg->standard_voltage.get() * int(phase::count));
+    return int(reg->current_budget_power);
 });
 
 auto policies_rpc = www::rpc::get("policies", [] {
@@ -164,6 +164,10 @@ int main(int argc, const char **argv)
         }
         if (policy_it != reg->policies.end())
             reg->current_budget = policy_it->second->apply(sit);
+
+        auto grid_voltage = std::accumulate(sit.ac.begin(), sit.ac.end(), 0.0,
+                                [](double sum, const auto& ac) { return sum + ac.voltage; }) / sit.ac.size();
+        reg->current_budget_power = reg->current_budget.current * grid_voltage * sit.ac.size();
         for (auto&& [name, consumer] : reg->consumers)
             consumer->handle(reg->current_budget, sit);
     } while ([&] {
