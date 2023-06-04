@@ -34,8 +34,6 @@ struct registry
     std::map<int, policy*> policies;
     std::map<int, consumer*> consumers;
     settings::param<int> active_policy{"active_policy", 0};
-    budget current_budget;
-    double current_budget_power;
 
 private:
     registry() {}
@@ -47,11 +45,6 @@ template<typename T>
 int next_id(const std::map<int, T>& map) {
     return map.empty() ? 0 : map.rbegin()->first + 1;
 }
-
-auto curcap_rpc = www::rpc::get("curcap", [] {
-    auto reg = registry::lock();
-    return int(reg->current_budget_power);
-});
 
 auto policies_rpc = www::rpc::get("policies", [] {
     auto reg = registry::lock();
@@ -150,6 +143,7 @@ int main(int argc, const char **argv)
     int active_policy = -1;
 
     situation sit;
+    budget b;
 
     do
     {
@@ -163,13 +157,10 @@ int main(int argc, const char **argv)
             active_policy = reg->active_policy.get();
         }
         if (policy_it != reg->policies.end())
-            reg->current_budget = policy_it->second->apply(sit);
+            b = policy_it->second->apply(sit);
 
-        auto grid_voltage = std::accumulate(sit.ac.begin(), sit.ac.end(), 0.0,
-                                [](double sum, const auto& ac) { return sum + ac.voltage; }) / sit.ac.size();
-        reg->current_budget_power = reg->current_budget.current * grid_voltage * sit.ac.size();
         for (auto&& [name, consumer] : reg->consumers)
-            consumer->handle(reg->current_budget, sit);
+            consumer->handle(b, sit);
     } while ([&] {
         auto t1 = std::chrono::system_clock::now();
         if (t1 > t0 + interval) logfwarn("Finished current interval late: it took %s", duration_cast<std::chrono::milliseconds>(t1 - t0));
