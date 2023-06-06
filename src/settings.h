@@ -54,6 +54,8 @@ private:
 // to be used in html to include editable text to display and manipulate that want to include an input field for managing a setting
 std::string html(const param<double>& param);
 
+void apply(const nlohmann::json& j);
+
 } // namespace settings
 
 #endif /* SETTINGS_H_ */

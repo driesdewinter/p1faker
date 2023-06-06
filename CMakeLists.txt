@@ -21,6 +21,7 @@ target_sources(p1gen PRIVATE src/sma.cpp)
 target_sources(p1gen PRIVATE src/policies.cpp)
 target_sources(p1gen PRIVATE src/simulator.cpp)
 target_sources(p1gen PRIVATE src/monitor.cpp)
+target_sources(p1gen PRIVATE src/schedule.cpp)
 
 target_link_libraries(p1gen PRIVATE pthread)
 

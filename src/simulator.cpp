@@ -2,6 +2,9 @@
 #include "logf.h"
 #include "mutex_protected.h"
 #include "www.h"
+#include "config.h"
+
+#include <optional>
 
 namespace
 {

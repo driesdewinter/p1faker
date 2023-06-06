@@ -6,8 +6,6 @@
 #include <string>
 #include <numeric>
 
-#include "settings.h"
-
 namespace core
 {
 

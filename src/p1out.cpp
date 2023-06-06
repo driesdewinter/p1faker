@@ -151,12 +151,15 @@ struct consumer_impl : core::consumer
 
 www::rpc p1status = www::rpc::get("p1status", [] {
     static config::param<std::string> path{"p1status.path", "/sys/class/gpio/gpio2/value"};
+    static bool was_open = true;
     std::ifstream fin{path.get()};
-    if (not fin.is_open())
+    if (fin.is_open() != was_open)
     {
-        logfdebug("Could not open config file %s", path);
-        return false;
+        if (fin.is_open()) logfdebug("Successfully opened %s for reading", path);
+        else logferror("Could not open %s for reading", path);
+        was_open = fin.is_open();
     }
+    if (not fin.is_open()) return false;
     bool result;
     fin >> result;
     result = !result; // inverted due to opto coupler

@@ -69,40 +69,6 @@ www::rpc get_rpc = www::rpc::get("settings", [] {
     return reg->all_settings;
 });
 
-www::rpc set_rpc = www::rpc::post<nlohmann::json>("settings", [](const nlohmann::json& settings) {
-    if (not settings.is_object())
-    {
-        logfwarn("POST settings: input argument must be an object");
-        return;
-    }
-    auto reg = registry::lock();
-    for (auto& [name, value] : settings.items())
-    {
-        auto sett_it = reg->all_settings.find(name);
-        auto subs_it = reg->subscribers.find(name);
-        if (sett_it == reg->all_settings.end() or subs_it == reg->subscribers.end())
-        {
-            logfwarn("POST settings: setting %s not found.", name);
-            continue;
-        }
-        try
-        {
-            for (auto& subscriber : subs_it->second)
-            {
-                subscriber->setjson(value);
-            }
-            *sett_it = value;
-            logfdebug("POST settings: changed %s to %s", name, value.dump());
-        }
-        catch (std::exception& e)
-        {
-            logfwarn("POST settings: failed to parse %s as value for settings %s: %s", value.dump(), name, e.what());
-            // if the failing setjson()-call was not the first one, we end up with inconsistent state across subscribers,
-            // but we assume they all apply the same validation rules.
-        }
-    }
-    reg->save();
-});
 
 } // anonymous namespace
 
@@ -149,3 +115,41 @@ std::string settings::html(const param<double>& param)
     return str(boost::format("<input class=\"number\" type=\"number\" value=\"\" id=\"%s\" onchange=\"changeSetting(this)\"></input>") % param.name());
 }
 
+void settings::apply(const nlohmann::json& settings) {
+    if (not settings.is_object())
+    {
+        logfwarn("POST settings: input argument must be an object");
+        return;
+    }
+    auto reg = registry::lock();
+    for (auto& [name, value] : settings.items())
+    {
+        auto sett_it = reg->all_settings.find(name);
+        auto subs_it = reg->subscribers.find(name);
+        if (sett_it == reg->all_settings.end() or subs_it == reg->subscribers.end())
+        {
+            logfwarn("POST settings: setting %s not found.", name);
+            continue;
+        }
+        try
+        {
+            for (auto& subscriber : subs_it->second)
+            {
+                subscriber->setjson(value);
+            }
+            *sett_it = value;
+            logfdebug("POST settings: changed %s to %s", name, value.dump());
+        }
+        catch (std::exception& e)
+        {
+            logfwarn("POST settings: failed to parse %s as value for settings %s: %s", value.dump(), name, e.what());
+            // if the failing setjson()-call was not the first one, we end up with inconsistent state across subscribers,
+            // but we assume they all apply the same validation rules.
+        }
+    }
+    reg->save();
+}
+
+namespace {
+www::rpc set_rpc = www::rpc::post<nlohmann::json>("settings", settings::apply);
+}

@@ -17,16 +17,15 @@
             </div>
             <div>
                 <div id="schedule-on" class="schedule-alt">
-                    <p>... en schakel automatisch naar ...</p>
+                    <p>... en schakel na <input class="number" type="text" value="?" id="next_delay" onchange="changeNextDelay()"></input> uur automatisch naar ...</p>
                     <div class="dropdown">
                         <button id="dropDownHeadLater" onclick="showDropDown('dropDownListLater')" class="dropbtn selected"><i class="wi wi-alien"></i>Offline</button>
                         <div id="dropDownListLater" class="dropdown-content">
                         </div>
                     </div>
-                    <p>... na <input class="number" type="text" value="2" onchange="console.log('hello')"></input> uur.</p>
                 </div>
                 <div id="schedule-off" class="schedule-alt">
-                    <p><a href="#" onclick="activateSchedule();return false;">Voor onbepaalde tijd</a></p>
+                    <p><a href="#" onclick="activateScheduleWithDefaultDelay();return false;">Voor onbepaalde tijd</a></p>
                 </div>
             </div>
 
