@@ -11,16 +11,15 @@ using namespace std::literals::chrono_literals;
 
 static auto severity_labels = {"panic", "error", "warn", "info", "debug", "extra"};
 
-std::ostream& logseverity::operator<<(std::ostream& os, logseverity::type v)
-{
+std::ostream& logseverity::operator<<(std::ostream& os, logseverity::type v) {
     return os << *(severity_labels.begin() + v);
 }
-std::istream& logseverity::operator>>(std::istream& is, logseverity::type& v)
-{
+std::istream& logseverity::operator>>(std::istream& is, logseverity::type& v) {
     std::string label;
     is >> label;
     auto it = std::find(severity_labels.begin(), severity_labels.end(), label);
-    if (it == severity_labels.end()) throw std::logic_error{"invalid severity"};
+    if (it == severity_labels.end())
+        throw std::logic_error{"invalid severity"};
     v = static_cast<logseverity::type>(it - severity_labels.begin());
     return is;
 }
@@ -28,18 +27,15 @@ std::istream& logseverity::operator>>(std::istream& is, logseverity::type& v)
 msgdef::msgdef(logseverity::type _sev, const char* _file, int _line, const char* _fmt)
 : sev(_sev), file(_file), line(_line), fmt(_fmt) {}
 
-bool msgdef::shouldlog() const
-{
+bool msgdef::shouldlog() const {
     static config::param<logseverity::type> verbosity{"verbosity", logseverity::info};
     return sev <= verbosity.get();
 }
 
-void msgdef::dolog(std::string msg)
-{
+void msgdef::dolog(std::string msg) {
     static config::param<bool> use_syslog{"use_syslog", false};
     //static bool use_syslog = false;
-    if (use_syslog)
-    {
+    if (use_syslog) {
         static struct syslog_init_type {
             syslog_init_type() { openlog("p1gen", 0, 0); }
         } syslog_init;
@@ -47,9 +43,7 @@ void msgdef::dolog(std::string msg)
         static auto levels = {LOG_ALERT, LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG, LOG_DEBUG};
         syslog(*(levels.begin() + sev), "[%s] [%s:%d] %s",
                 *(severity_labels.begin() + sev), file, line, msg.c_str());
-    }
-    else
-    {
+    } else {
         struct tm tm;
         auto tp = std::chrono::system_clock::now();
         auto tt = std::chrono::system_clock::to_time_t(tp);
@@ -59,5 +53,6 @@ void msgdef::dolog(std::string msg)
                 % tm.tm_hour % tm.tm_min % tm.tm_sec % (tp.time_since_epoch() % 1s / 1ms) % tm.tm_zone
                 % sev % file % line % msg;
     }
-    if (sev == logseverity::panic) std::abort();
+    if (sev == logseverity::panic)
+        std::abort();
 }

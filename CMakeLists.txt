@@ -13,8 +13,9 @@ target_sources(p1gen PRIVATE src/config.cpp)
 target_sources(p1gen PRIVATE src/logf.cpp)
 target_sources(p1gen PRIVATE src/www.cpp)
 target_sources(p1gen PRIVATE src/settings.cpp)
-target_sources(p1gen PRIVATE src/modbus.cpp)
 target_sources(p1gen PRIVATE src/core.cpp)
+target_sources(p1gen PRIVATE src/service_discovery.cpp)
+target_sources(p1gen PRIVATE src/modbus.cpp)
 
 target_sources(p1gen PRIVATE src/p1out.cpp)
 target_sources(p1gen PRIVATE src/sma.cpp)
@@ -24,6 +25,7 @@ target_sources(p1gen PRIVATE src/monitor.cpp)
 target_sources(p1gen PRIVATE src/schedule.cpp)
 
 target_link_libraries(p1gen PRIVATE pthread)
+target_link_libraries(p1gen PRIVATE avahi-client avahi-common)
 
 include(GNUInstallDirs)
 install(TARGETS p1gen

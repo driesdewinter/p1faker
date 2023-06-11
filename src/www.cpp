@@ -21,15 +21,12 @@ using tcp = asio::ip::tcp;       // from <boost/asio/ip/tcp.hpp>
 
 using namespace std::literals::chrono_literals;
 
-namespace
-{
+namespace {
 
 // Return a reasonable mime type based on the extension of a file.
-beast::string_view mime_type(beast::string_view path)
-{
+beast::string_view mime_type(beast::string_view path) {
     using beast::iequals;
-    auto const ext = [&path]
-    {
+    auto const ext = [&path] {
         auto const pos = path.rfind(".");
         if(pos == beast::string_view::npos)
             return beast::string_view{};
@@ -51,16 +48,13 @@ struct ip_parser {
 constexpr const char* http_server = "p1gen/1.0";
 config::param<std::string> doc_root{"www.doc_root", "public"};
 
-struct rpc_value
-{
+struct rpc_value {
     rpc* instance;
     std::function<void(const nlohmann::json&, nlohmann::json&)> handler;
 };
 
-struct registry
-{
-    static auto lock()
-    {
+struct registry {
+    static auto lock() {
         static mutex_protected<registry> instance;
         return instance.lock();
     }
@@ -69,12 +63,10 @@ struct registry
 };
 
 template<class Body, class Allocator, class ResponseHandler>
-void handle_request(http::request<Body, http::basic_fields<Allocator>>&& req, ResponseHandler&& response_handler)
-{
+void handle_request(http::request<Body, http::basic_fields<Allocator>>&& req, ResponseHandler&& response_handler) {
     // Returns a bad request response
     auto const bad_request =
-    [&](beast::string_view why)
-    {
+    [&](beast::string_view why) {
         http::response<http::string_body> res{http::status::bad_request, req.version()};
         res.set(http::field::server, http_server);
         res.set(http::field::content_type, "text/html");
@@ -86,8 +78,7 @@ void handle_request(http::request<Body, http::basic_fields<Allocator>>&& req, Re
 
     // Returns a not found response
     auto const not_found =
-    [&](beast::string_view target)
-    {
+    [&](beast::string_view target) {
         http::response<http::string_body> res{http::status::not_found, req.version()};
         res.set(http::field::server, http_server);
         res.set(http::field::content_type, "text/html");
@@ -99,8 +90,7 @@ void handle_request(http::request<Body, http::basic_fields<Allocator>>&& req, Re
 
     // Returns a server error response
     auto const server_error =
-    [&](beast::string_view what)
-    {
+    [&](beast::string_view what) {
         http::response<http::string_body> res{http::status::internal_server_error, req.version()};
         res.set(http::field::server, http_server);
         res.set(http::field::content_type, "text/html");
@@ -111,8 +101,7 @@ void handle_request(http::request<Body, http::basic_fields<Allocator>>&& req, Re
     };
 
     static constexpr const char* api_prefix = "/api/";
-    if (req.target().starts_with(api_prefix))
-    {
+    if (req.target().starts_with(api_prefix)) {
         rpc::key key;
              if (req.method() == http::verb::get) key.method = method::get;
         else if (req.method() == http::verb::post) key.method = method::post;
@@ -125,40 +114,28 @@ void handle_request(http::request<Body, http::basic_fields<Allocator>>&& req, Re
 
         nlohmann::json in;
         nlohmann::json out;
-        if (req[http::field::content_type] == "application/json")
-        {
-            try
-            {
+        if (req[http::field::content_type] == "application/json") {
+            try {
                 in = nlohmann::json::parse(req.body());
-            }
-            catch (nlohmann::json::exception& e)
-            {
+            } catch (nlohmann::json::exception& e) {
                 return bad_request(e.what());
             }
-        }
-        else if (not req[http::field::content_type].empty())
-        {
+        } else if (not req[http::field::content_type].empty()) {
             return bad_request("RPCs only understand input of Content-Type \"application/json\"");
         }
 
-        try
-        {
+        try {
             it->second.handler(in, out);
-        }
-        catch (std::exception& e)
-        {
+        } catch (std::exception& e) {
             return bad_request(e.what());
         }
 
-        if (out.is_null())
-        {
+        if (out.is_null()) {
             http::response<http::string_body> res{http::status::no_content, req.version()};
             res.set(http::field::server, http_server);
             res.keep_alive(req.keep_alive());
             return response_handler(std::move(res));
-        }
-        else
-        {
+        } else {
             http::response<http::string_body> res{http::status::ok, req.version()};
             res.set(http::field::server, http_server);
             res.set(http::field::content_type, "application/json");
@@ -171,6 +148,7 @@ void handle_request(http::request<Body, http::basic_fields<Allocator>>&& req, Re
 
     // Make sure we can handle the method
     if (req.method() != http::verb::get && req.method() != http::verb::head)
+        return bad_request("Unsupported method");
 
     // Request path must be absolute and not contain "..".
     if (req.target().empty() || req.target()[0] != '/' || req.target().find("..") != beast::string_view::npos)
@@ -197,8 +175,7 @@ void handle_request(http::request<Body, http::basic_fields<Allocator>>&& req, Re
     // Cache the size since we need it after the move
     auto const size = body.size();
 
-    if (req.method() == http::verb::head)
-    {
+    if (req.method() == http::verb::head) {
         // Respond to HEAD request
         http::response<http::empty_body> res{http::status::ok, req.version()};
         res.set(http::field::server, http_server);
@@ -206,9 +183,7 @@ void handle_request(http::request<Body, http::basic_fields<Allocator>>&& req, Re
         res.content_length(size);
         res.keep_alive(req.keep_alive());
         return response_handler(std::move(res));
-    }
-    else if (req.method() == http::verb::get)
-    {
+    } else if (req.method() == http::verb::get) {
         // Respond to GET request
         http::response<http::file_body> res{
             std::piecewise_construct,
@@ -219,32 +194,26 @@ void handle_request(http::request<Body, http::basic_fields<Allocator>>&& req, Re
         res.content_length(size);
         res.keep_alive(req.keep_alive());
         response_handler(std::move(res));
-    }
-    else
-    {
+    } else {
         return bad_request("Unknown HTTP-method");
     }
 }
 
 // Report a failure
-void fail(beast::error_code ec, char const* what)
-{
+void fail(beast::error_code ec, char const* what) {
     logferror("%s: %s", what, ec.message());
 }
 
 // Handles an HTTP server connection
-struct connection : public std::enable_shared_from_this<connection>
-{
+struct connection : public std::enable_shared_from_this<connection> {
     connection(tcp::socket&& socket) : m_stream(std::move(socket)) {}
 
-    void run()
-    {
+    void run() {
         asio::dispatch(m_stream.get_executor(),
                 beast::bind_front_handler(&connection::do_read, shared_from_this()));
     }
 
-    void do_read()
-    {
+    void do_read() {
         m_req = {};
         m_stream.expires_after(300s);
 
@@ -252,8 +221,7 @@ struct connection : public std::enable_shared_from_this<connection>
                 beast::bind_front_handler(&connection::on_read, shared_from_this()));
     }
 
-    void on_read(beast::error_code ec, std::size_t)
-    {
+    void on_read(beast::error_code ec, std::size_t) {
         // This means they closed the connection
         if (ec == http::error::end_of_stream)
             return do_close();
@@ -271,27 +239,21 @@ struct connection : public std::enable_shared_from_this<connection>
         });
     }
 
-    void on_write(bool keep_alive, beast::error_code ec, std::size_t)
-    {
+    void on_write(bool keep_alive, beast::error_code ec, std::size_t) {
         m_spresponse = {};
 
         if (ec)
             return fail(ec, "write");
 
         if (not keep_alive)
-        {
-            // This means we should close the connection, usually because
-            // the response indicated the "Connection: close" semantic.
             return do_close();
-        }
 
-        // Read another request
+        // next please
         do_read();
     }
 
     void do_close()
     {
-        // Send a TCP shutdown
         beast::error_code ec;
         m_stream.socket().shutdown(tcp::socket::shutdown_send, ec);
     }
@@ -304,33 +266,27 @@ private:
 
 
 // Accepts incoming connections and launches the connections
-struct listener : public std::enable_shared_from_this<listener>
-{
+struct listener : public std::enable_shared_from_this<listener> {
     listener(asio::io_context& ioc, tcp::endpoint endpoint)
-    : m_ioc(ioc)
-    , m_acceptor(asio::make_strand(m_ioc))
-    {
+    : m_ioc(ioc), m_acceptor(asio::make_strand(m_ioc)) {
         m_acceptor.open(endpoint.protocol());
         m_acceptor.set_option(asio::socket_base::reuse_address(true));
         m_acceptor.bind(endpoint);
         m_acceptor.listen(asio::socket_base::max_listen_connections);
     }
 
-    void run()
-    {
+    void run() {
         do_accept();
     }
 
 private:
-    void do_accept()
-    {
+    void do_accept() {
         // The new connection gets its own strand
         m_acceptor.async_accept(asio::make_strand(m_ioc),
             beast::bind_front_handler(&listener::on_accept, shared_from_this()));
     }
 
-    void on_accept(beast::error_code ec, tcp::socket socket)
-    {
+    void on_accept(beast::error_code ec, tcp::socket socket) {
         if (ec)
             return fail(ec, "accept");
 
@@ -347,25 +303,20 @@ private:
 config::param<asio::ip::address, ip_parser> bind_address{"www.bind_address", asio::ip::address{}};
 config::param<uint16_t> bind_port{"www.bind_port", 80};
 
-struct server
-{
-    server()
-    {
-        try
-        {
+struct server {
+    server() {
+        try {
             std::make_shared<listener>(m_ioc, tcp::endpoint{bind_address, bind_port})->run();
             m_thread = std::thread{[&] { m_ioc.run(); }};
-        }
-        catch (boost::system::system_error& e)
-        {
+        } catch (boost::system::system_error& e) {
             logferror("Failed to set up www server: %s", e.what());
         }
     }
 
-    ~server()
-    {
+    ~server() {
         m_ioc.stop();
-        if (m_thread.joinable()) m_thread.join();
+        if (m_thread.joinable())
+            m_thread.join();
     }
 
     asio::io_context m_ioc;
@@ -374,19 +325,16 @@ struct server
 
 } // anonymous namespace
 
-std::ostream& www::method::operator<<(std::ostream& os, method::type v)
-{
+std::ostream& www::method::operator<<(std::ostream& os, method::type v) {
     static auto labels = {"GET", "POST"};
     return os << *(labels.begin() + v);
 }
 
-std::ostream& www::operator<<(std::ostream& os, rpc::key key)
-{
+std::ostream& www::operator<<(std::ostream& os, rpc::key key) {
     return os << key.method << " /api/" << key.name;
 }
 
-void rpc::init(std::function<void(const nlohmann::json&, nlohmann::json&)> handler)
-{
+void rpc::init(std::function<void(const nlohmann::json&, nlohmann::json&)> handler) {
     auto reg = registry::lock();
     auto it = reg->rpcs.find(m_key);
     logfdebug("%s RPC %s", it == reg->rpcs.end() ? "Register" : "Overrule", m_key);
@@ -394,8 +342,7 @@ void rpc::init(std::function<void(const nlohmann::json&, nlohmann::json&)> handl
     reg->rpcs.emplace(m_key, rpc_value{this, handler});
 }
 
-void rpc::move(rpc& src)
-{
+void rpc::move(rpc& src) {
     auto reg = registry::lock();
     auto it = reg->rpcs.find(m_key);
     if (it == reg->rpcs.end()) return;
@@ -403,8 +350,7 @@ void rpc::move(rpc& src)
     it->second.instance = this;
 }
 
-rpc::~rpc()
-{
+rpc::~rpc() {
     auto reg = registry::lock();
     auto it = reg->rpcs.find(m_key);
     if (it == reg->rpcs.end()) return;

@@ -12,7 +12,6 @@
 
 #include <map>
 #include <vector>
-#include <cstring>
 #include <chrono>
 #include <thread>
 
@@ -20,12 +19,10 @@ using namespace std::literals::chrono_literals;
 
 using namespace core;
 
-namespace
-{
-struct registry
-{
-    static auto lock()
-    {
+namespace {
+
+struct registry {
+    static auto lock() {
         static mutex_protected<registry> instance;
         return instance.lock();
     }
@@ -37,7 +34,6 @@ struct registry
 
 private:
     registry() {}
-
     friend class mutex_protected<registry>;
 };
 
@@ -50,7 +46,6 @@ auto policies_rpc = www::rpc::get("policies", [] {
     auto reg = registry::lock();
     nlohmann::json policies;
     for (auto&& [index, ptr] : reg->policies)
-    {
         policies.push_back({
             {"index", index},
             {"name", ptr->name()},
@@ -58,77 +53,56 @@ auto policies_rpc = www::rpc::get("policies", [] {
             {"label", ptr->label()},
             {"description", ptr->description()}
         });
-    }
     return policies;
 });
-
-struct sigsuppress_type
-{
-    sigsuppress_type()
-    {
-        sigaddset(&sigset, SIGTERM);
-        sigaddset(&sigset, SIGINT);
-        sigprocmask(SIG_BLOCK, &sigset, nullptr);
-    }
-    sigset_t sigset = {};
-} sigsuppress;
 
 } // anonymous namespace
 
 producer::producer(std::string_view _name)
-: m_name(_name)
-{
+: m_name(_name) {
     auto reg = registry::lock();
     m_index = next_id(reg->producers);
     logfdebug("Register producer %s", name());
     reg->producers.emplace(m_index, this);
 }
 
-producer::~producer()
-{
+producer::~producer() {
     auto reg = registry::lock();
     logfdebug("Unregister producer %s (index %d)", name(), m_index);
     reg->producers.erase(m_index);
 }
 
 policy::policy(std::string_view _name)
-: m_name(_name)
-{
+: m_name(_name) {
     auto reg = registry::lock();
     m_index = next_id(reg->policies);
     logfdebug("Register policy %s (index %d)", name(), m_index);
     reg->policies.emplace(m_index, this);
 }
 
-policy::~policy()
-{
+policy::~policy() {
     auto reg = registry::lock();
     logfdebug("Unregister policy %s (index %d)", name(), m_index);
     reg->producers.erase(m_index);
 }
 
 consumer::consumer(std::string_view _name)
-: m_name(_name)
-{
+: m_name(_name) {
     auto reg = registry::lock();
     m_index = next_id(reg->consumers);
     logfdebug("Register consumer %s (index %d)", name(), m_index);
     reg->consumers.emplace(m_index, this);
 }
 
-consumer::~consumer()
-{
+consumer::~consumer() {
     auto reg = registry::lock();
     logfdebug("Unregister consumer %s (index %d)", name(), m_index);
     reg->consumers.erase(m_index);
 }
 
-int main(int argc, const char **argv)
-{
-    while (++argv, --argc)
-    {
-        if (std::strncmp(*argv, "--", 2) or argc < 2)
-        {
+int main(int argc, const char **argv) {
+    while (++argv, --argc) {
+        if (std::strncmp(*argv, "--", 2) or argc < 2) {
             std::cerr << "Usage: p1gen [--option value]*\n\n";
             return -1;
         }
@@ -148,14 +122,16 @@ int main(int argc, const char **argv)
     auto phase_config = config::param{"phases", 3};
     sit.grid.resize(phase_config);
 
-    do
-    {
+    sigset_t sigset = {};
+    sigaddset(&sigset, SIGTERM);
+    sigaddset(&sigset, SIGINT);
+
+    do {
         auto reg = registry::lock();
         for (auto&& [name, producer] : reg->producers)
             producer->poll(sit);
         auto policy_it = reg->policies.find(reg->active_policy.get());
-        if (reg->active_policy.get() != active_policy)
-        {
+        if (reg->active_policy.get() != active_policy) {
             logfinfo("Activating policy %s", policy_it == reg->policies.end() ? std::string_view{"null"} : policy_it->second->name());
             active_policy = reg->active_policy.get();
         }
@@ -169,6 +145,6 @@ int main(int argc, const char **argv)
         if (t1 > t0 + interval) logfwarn("Finished current interval late: it took %s", duration_cast<std::chrono::milliseconds>(t1 - t0));
         t0 = std::max(t1, t0 + interval);
         timespec ts = { decltype(ts.tv_sec)((t0 - t1) / 1s), decltype(ts.tv_nsec)((t0 - t1) % 1s / 1ns) };
-        return sigtimedwait(&sigsuppress.sigset, nullptr, &ts) < 0;
+        return sigtimedwait(&sigset, nullptr, &ts) < 0;
     }());
 }

@@ -4,15 +4,13 @@
 #include <vector>
 #include <optional>
 #include <memory>
-#include <boost/asio/ip/address.hpp>
+#include <boost/asio/ip/tcp.hpp>
 
-namespace modbus
-{
+namespace modbus {
 
 struct register_vector {
     template<typename T>
-    T get(uint16_t address) const
-    {
+    T get(uint16_t address) const {
         T ret = 0;
         for (std::size_t i = 0; i < sizeof(T); i++)
             ret = ret << 8 | m_data[(address - m_start_address) * 2 + i];
@@ -27,10 +25,11 @@ private:
     std::vector<uint8_t> m_data;
 };
 
-class connection
-{
+class connection {
 public:
-    connection(std::string name, boost::asio::ip::address ip, uint16_t port = 502);
+    connection(std::string name);
+
+    void update_endpoint_candidates(const std::vector<boost::asio::ip::tcp::endpoint>& endpoints);
 
     std::optional<register_vector> read_holding_registers(uint8_t unit_id, uint16_t start_address, uint16_t word_count);
 private:

@@ -4,13 +4,11 @@
 #include <string_view>
 #include <sstream>
 
-namespace config
-{
+namespace config {
 
 void set_param(std::string_view name, std::string_view value);
 
-class param_base
-{
+class param_base {
 public:
     virtual std::string parse(std::string_view text) = 0;
 protected:
@@ -24,20 +22,17 @@ private:
 };
 
 template<typename T, typename = void>
-struct parser
-{
+struct parser {
     T operator()(std::string_view text) { T v; std::istringstream{std::string{text}} >> v; return v; }
 };
 
 template<typename T>
-struct parser<T, std::enable_if<std::is_constructible_v<T, std::string_view>>>
-{
+struct parser<T, std::enable_if<std::is_constructible_v<T, std::string_view>>> {
     T operator()(std::string_view text) { return T{text}; }
 };
 
 template<typename T, typename Parser = parser<T>>
-class param : param_base, Parser
-{
+class param : param_base, Parser {
 public:
     param(std::string_view name, T default_value) : param_base(name), m_value(default_value) { init(); }
 
@@ -47,8 +42,7 @@ public:
     const T& get() const { return m_value; }
 
 protected:
-    std::string parse(std::string_view text) override
-    {
+    std::string parse(std::string_view text) override {
         m_value = Parser::operator()(text);
         return (std::ostringstream{} << m_value).str();
     }

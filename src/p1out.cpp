@@ -91,8 +91,7 @@ struct consumer_impl : core::consumer
         reset();
 
         m_fd = m_filename.get().empty() ? STDOUT_FILENO : open(m_filename.get().c_str(), O_RDWR | O_SYNC | O_EXCL);
-        if (m_fd < 0)
-        {
+        if (m_fd < 0) {
             if (m_connect_errno != errno)
                 logferror("Could not open %s: %s. Using stdout instead.\n", m_filename, strerror(errno));
             m_connect_errno = errno;
@@ -101,8 +100,7 @@ struct consumer_impl : core::consumer
         }
         logfinfo("Connected p1 output to %s", m_filename.get().empty() ? "stdout" : m_filename.get().c_str());
         m_connect_errno = 0;
-        if (m_istty) [&]
-        {
+        if (m_istty) [&] {
             struct termios tty;
             if (tcgetattr(m_fd, &tty) != 0)
             {
@@ -122,7 +120,8 @@ struct consumer_impl : core::consumer
 
     void handle(const core::budget& budget, const core::situation&) override
     {
-        if (m_connect_errno or m_write_errno) reconnect();
+        if (m_connect_errno or m_write_errno)
+            reconnect();
 
         double fakecur = std::max(0.0, m_max_current - budget.current);
         auto payload = str(boost::format(p1template) % fakecur % fakecur % fakecur);
@@ -131,8 +130,7 @@ struct consumer_impl : core::consumer
         int err = n == ssize_t(fullmsg.size()) ? 0
                 : n < 0 ? errno
                 : EMSGSIZE; // don't support partial writes, so treat it as an error (Message too long).
-        if (err != m_write_errno)
-        {
+        if (err != m_write_errno) {
             if (err) logferror("Writing %u bytes to p1 output failed: %s", fullmsg.size(), strerror(errno));
             else logfinfo("Successfully written %u bytes to p1 output", fullmsg.size());
             m_write_errno = err;
@@ -153,8 +151,7 @@ www::rpc p1status = www::rpc::get("p1status", [] {
     static config::param<std::string> path{"p1status.path", "/sys/class/gpio/gpio2/value"};
     static bool was_open = true;
     std::ifstream fin{path.get()};
-    if (fin.is_open() != was_open)
-    {
+    if (fin.is_open() != was_open) {
         if (fin.is_open()) logfdebug("Successfully opened %s for reading", path);
         else logferror("Could not open %s for reading", path);
         was_open = fin.is_open();

@@ -36,14 +36,17 @@ This is it:
 The software is written in C++, so it must be cross-compiled on a PC to run on ARM. To set up the environment for cross-compiling C++ applications to run on Raspberry Pi, I followed [the instructions of "Pieter P"](https://tttapa.github.io/Pages/Raspberry-Pi/C++-Development-RPiOS/).
 
 This project depends on the boost library, so on your development PC:
-> sudo sbuild-apt rpi-bullseye-armhf apt-get install libboost-all-dev
-
+```
+sudo sbuild-apt rpi-bullseye-armhf apt-get install libboost-all-dev
+```
 and also on nlohmann::json. So make sure you have a local copy of [nlohmann/json.hpp](https://raw.githubusercontent.com/nlohmann/json/develop/single_include/nlohmann/json.hpp) in your include path.
 
 If your environment is set up, it should be possible to build the application with
-> mkdir -p build && cd build
-> cmake .. -DCMAKE_TOOLCHAIN_FILE=../cmake/armv6-rpi-bullseye-gnueabihf2.cmake
-> make
+```
+mkdir -p build && cd build
+cmake .. -DCMAKE_TOOLCHAIN_FILE=../cmake/armv6-rpi-bullseye-gnueabihf2.cmake
+make
+```
 
 Copy the p1gen binary and the public directory to the Raspberry Pi.
 
@@ -51,15 +54,17 @@ On the Raspberr Pi itself:
 - /usr/lib/systemd/system/p1gen.service
 - enable_uart=1 in /boot/config.txt
 - apt install libboost-all?
-- setcap CAP\_NET\_BIND_SERVICE+ep p1gen
 - Something with libstdc++.so.6.0.31?
 
 ## Usage
 
-- How to test with simulator?
 - Config parameters?
 
 ## SW design
+
+- How to add support for other inverters or any other source of energy context information?
+- How to create new policies?
+- How to test with simulator?
 
 ## Roadmap
 
@@ -69,5 +74,21 @@ On the Raspberr Pi itself:
 - Get complete list of config parameters at runtime?
 - Charging on single phase really not possible?
 - Install script
-- Security of web interface: https and authorization
-
+- Auto-discover SMA inverter
+- Auto-detect static parameters of SMA: maximum power inverter / battery
+- Avoid accessing SD-card
+- Service discovery: publish service
+- Security
+  - Use https
+  - Every box has own unique private key, which is signed by own CA.
+  - Own CA's certificate is listed as trust anchor in Android app.
+  - Password is chosen on initial install and must be entered on later connections. Scenario:
+    1. Android app connects to auto-discovered p1faker. 
+    2. Is this the first time that an app connects to device?
+       - Yes: Choose password
+       - No: Enter password
+       Thanks to the security config and SSL encryption, the app knows that it has a confidential channel to the p1faker and that the p1faker is really a p1faker (certificate signed by me :-) )
+       So password can posted safely.
+    3. Cookie received from p1faker so password doesn't need to be entered again.
+    4. Safe re-connecting with cookie (stored in EncryptedSharedPreferences)
+    

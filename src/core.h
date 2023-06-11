@@ -6,17 +6,14 @@
 #include <string>
 #include <numeric>
 
-namespace core
-{
+namespace core {
 
-struct situation
-{
+struct situation {
     double battery_state = 1.0; // 0.0 .. 1.0
     double inverter_output = 0.0; // total yield of pv + battery
     double battery_output = 0.0; // battery discharge power (negative in case of charge)
     double solar_output() const { return inverter_output - battery_output; }
-    struct grid_type
-    {
+    struct grid_type {
         double power() const { return voltage * current; } // ignoring cos(phi)...
         double voltage = 230.0;
         double current = 0.0;
@@ -35,13 +32,11 @@ struct situation
     }
 };
 
-struct budget
-{
+struct budget {
     double current = 0.0;
 };
 
-struct producer
-{
+struct producer {
     std::string_view name() const { return m_name; }
 
     virtual void poll(situation&) = 0;
@@ -54,8 +49,7 @@ private:
     int m_index;
 };
 
-struct policy
-{
+struct policy {
     std::string_view name() const { return m_name; }
     virtual std::string_view icon() const { return "wi-alien"; }
     virtual std::string_view label() const { return "Custom policy"; }
@@ -72,8 +66,7 @@ private:
     int m_index;
 };
 
-struct consumer
-{
+struct consumer {
     std::string_view name() const { return m_name; }
 
     virtual void handle(const budget&, const situation&) = 0;

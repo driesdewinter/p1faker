@@ -4,24 +4,19 @@
 #include <nlohmann/json.hpp>
 #include <functional>
 
-namespace www
-{
+namespace www {
 
-namespace method
-{
-enum type
-{
+namespace method {
+enum type {
     get,
     post
 };
 std::ostream& operator<<(std::ostream& os, type v);
 }
 
-class rpc
-{
+class rpc {
 public:
-    struct key
-    {
+    struct key {
         method::type method;
         std::string name;
 
@@ -30,8 +25,7 @@ public:
 
     /** Register nullary handler for GET-request. Return value is serialized to JSON in response body. */
     template<typename F>
-    static rpc get(std::string name, F&& handler)
-    {
+    static rpc get(std::string name, F&& handler) {
         rpc result{key{method::get, name}};
         result.init([handler](const nlohmann::json&, nlohmann::json& out) {
             out = handler();
@@ -45,8 +39,7 @@ public:
      * It is deserialized from JSON found in request body.
      * Return value of handler is ignored, 204 No Content is returned as response. */
     template<typename Request, typename F>
-    static rpc post(std::string name, F&& handler)
-    {
+    static rpc post(std::string name, F&& handler) {
         rpc result{key{method::post, name}};
         result.init([handler](const nlohmann::json& in, nlohmann::json&) {
             handler(in.get<Request>());

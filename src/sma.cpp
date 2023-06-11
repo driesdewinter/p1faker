@@ -2,15 +2,16 @@
 #include "config.h"
 #include "logf.h"
 #include "modbus.h"
+#include "service_discovery.h"
 
 namespace
 {
 
-struct producer_impl : core::producer
+struct producer_impl : core::producer, service_discovery::subscriber
 {
     producer_impl()
-    : core::producer("sma")
-    , m_conn("SMA inverter", m_ip.get(), m_port.get())
+    : core::producer("sma"), service_discovery::subscriber("_http._tcp")
+    , m_conn("SMA inverter")
     {}
 
     enum modbus_register
@@ -33,36 +34,46 @@ struct producer_impl : core::producer
 
     void poll(core::situation& sit) override
     {
-        if (auto reg = m_conn.read_holding_registers(unit_id, grid_voltage_l1, 18))
-        {
-            for (size_t i = 0; i < sit.grid.size(); i++)
-            {
+        if (m_endpoints_changed.exchange(false)) {
+            std::vector<boost::asio::ip::tcp::endpoint> ep;
+            for (auto& service : *m_services.lock())
+                ep.push_back(boost::asio::ip::tcp::endpoint{service.address, m_port.get()});
+            m_conn.update_endpoint_candidates(ep);
+        }
+
+        if (auto reg = m_conn.read_holding_registers(unit_id, grid_voltage_l1, 18)) {
+            for (size_t i = 0; i < sit.grid.size(); i++) {
                 sit.grid[i].voltage = reg->get<uint32_t>(grid_voltage_l1 + i * 2) / 100.0;
                 sit.grid[i].current = ( 1.0 * reg->get<uint32_t>(power_grid_drawn_l1 + i * 2)
                                       - 1.0 * reg->get<uint32_t>(power_grid_feeding_l1 + i * 2)
                                       ) / sit.grid[i].voltage;
             }
         }
-        if (auto reg = m_conn.read_holding_registers(unit_id, battery_state_of_charge, 2))
-        {
+        if (auto reg = m_conn.read_holding_registers(unit_id, battery_state_of_charge, 2)) {
             sit.battery_state = reg->get<uint32_t>(battery_state_of_charge) / 100.0;
         }
-        if (auto reg = m_conn.read_holding_registers(unit_id, inverter_power, 2))
-        {
+        if (auto reg = m_conn.read_holding_registers(unit_id, inverter_power, 2)) {
             sit.inverter_output = 1.0 * reg->get<uint32_t>(inverter_power);
         }
-        if (auto reg = m_conn.read_holding_registers(unit_id, battery_charge, 4))
-        {
+        if (auto reg = m_conn.read_holding_registers(unit_id, battery_charge, 4)) {
             sit.battery_output = 0.0 + reg->get<uint32_t>(battery_discharge) - reg->get<uint32_t>(battery_charge);
         }
     }
 
-    struct ip_parser {
-        boost::asio::ip::address operator()(std::string_view text) { return boost::asio::ip::make_address(text); }
-    };
-    config::param<boost::asio::ip::address, ip_parser> m_ip = {"sma.ip", boost::asio::ip::address{}};
+    bool match(std::string_view name) override { return name.find("SMA-Inverter") != std::string::npos; }
+
+    void resolved(const service& v) override {
+        m_endpoints_changed.store(true);
+        service_discovery::subscriber::resolved(v);
+    }
+    void lost(const service& v) override {
+        m_endpoints_changed.store(true);
+        service_discovery::subscriber::lost(v);
+    }
+
     config::param<uint16_t> m_port{"sma.port", 502};
     modbus::connection m_conn;
+    std::atomic<bool> m_endpoints_changed = false;
 } impl;
 
 } // anonymous namespace
