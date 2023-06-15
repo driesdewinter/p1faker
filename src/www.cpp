@@ -46,7 +46,7 @@ struct ip_parser {
     asio::ip::address operator()(std::string_view text) { return asio::ip::make_address(text); }
 };
 
-constexpr const char* http_server = "p1gen/1.0";
+constexpr const char* http_server = "p1faker/1.0";
 config::param<std::string> doc_root{"www.doc_root", "public"};
 
 struct rpc_value {

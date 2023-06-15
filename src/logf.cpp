@@ -37,7 +37,7 @@ void msgdef::dolog(std::string msg) {
     //static bool use_syslog = false;
     if (use_syslog) {
         static struct syslog_init_type {
-            syslog_init_type() { openlog("p1gen", 0, 0); }
+            syslog_init_type() { openlog("p1faker", 0, 0); }
         } syslog_init;
 
         static auto levels = {LOG_ALERT, LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG, LOG_DEBUG};

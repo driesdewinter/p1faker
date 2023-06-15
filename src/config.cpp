@@ -84,8 +84,8 @@ struct config_file {
         }
     }
 };
-config_file etc_config{"/etc/p1gen.conf"};
-config_file cwd_config{"p1gen.conf"};
+config_file etc_config{"/etc/p1faker.conf"};
+config_file cwd_config{"p1faker.conf"};
 
 } // anonymous namespace
 

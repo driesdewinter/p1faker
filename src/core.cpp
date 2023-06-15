@@ -103,7 +103,7 @@ consumer::~consumer() {
 int main(int argc, const char **argv) {
     while (++argv, --argc) {
         if (std::strncmp(*argv, "--", 2) or argc < 2) {
-            std::cerr << "Usage: p1gen [--option value]*\n\n";
+            std::cerr << "Usage: p1faker [--option value]*\n\n";
             return -1;
         }
         const char* name = &(*argv)[2];

@@ -15,7 +15,7 @@ struct registry {
         static mutex_protected<registry> instance;
         return instance.lock();
     }
-    config::param<std::string> settings_file = {"settings_file", "p1gen-settings.json"};
+    config::param<std::string> settings_file = {"settings_file", "p1faker-settings.json"};
     std::map<std::string, std::vector<param_base*>> subscribers;
     nlohmann::json all_settings;
 
