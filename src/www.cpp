@@ -302,7 +302,7 @@ private:
 };
 
 config::param<asio::ip::address, ip_parser> bind_address{"www.bind_address", asio::ip::address{}};
-config::param<uint16_t> bind_port{"www.bind_port", 80};
+config::param<uint16_t> bind_port{"www.bind_port", 8008};
 config::param<std::string> service_name{"www.service_name", "p1faker"};
 
 struct server {
