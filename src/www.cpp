@@ -2,6 +2,7 @@
 #include "config.h"
 #include "logf.h"
 #include "mutex_protected.h"
+#include "service_discovery.h"
 
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
@@ -302,6 +303,7 @@ private:
 
 config::param<asio::ip::address, ip_parser> bind_address{"www.bind_address", asio::ip::address{}};
 config::param<uint16_t> bind_port{"www.bind_port", 80};
+config::param<std::string> service_name{"www.service_name", "p1faker"};
 
 struct server {
     server() {
@@ -321,6 +323,7 @@ struct server {
 
     asio::io_context m_ioc;
     std::thread m_thread;
+    service_discovery::publisher m_publisher{"_http._tcp", service_name.get(), bind_port.get()};
 } _server;
 
 } // anonymous namespace

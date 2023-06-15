@@ -1,4 +1,4 @@
-# p1gen
+# p1faker
 
 ## Mission
 
@@ -24,7 +24,7 @@ The connection between this measurement module and the charge point is a simple 
 ## Hardware
 
 Wiring diagram of the device:
-![Wiring](p1gen.drawio.png)
+![Wiring](p1faker.drawio.png)
 
 My original idea was to use an Odroid C4 device for this project, see diagram, but unfortunately I blew up the one that I bought. So I switched to an old Raspberry Pi Model 3B that I had left, which is also good enough. I kept the original wiring plan (not exactly the same pins of course but it maps 1-to-1), although with a Raspberry Pi it could probably be simplified a bit.
 This is it:
@@ -48,10 +48,10 @@ cmake .. -DCMAKE_TOOLCHAIN_FILE=../cmake/armv6-rpi-bullseye-gnueabihf2.cmake
 make
 ```
 
-Copy the p1gen binary and the public directory to the Raspberry Pi.
+Copy the p1faker binary and the public directory to the Raspberry Pi.
 
 On the Raspberr Pi itself:
-- /usr/lib/systemd/system/p1gen.service
+- /usr/lib/systemd/system/p1faker.service
 - enable_uart=1 in /boot/config.txt
 - apt install libboost-all?
 - Something with libstdc++.so.6.0.31?

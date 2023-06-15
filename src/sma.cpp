@@ -60,7 +60,9 @@ struct producer_impl : core::producer, service_discovery::subscriber
         }
     }
 
-    bool match(std::string_view name) override { return name.find("SMA-Inverter") != std::string::npos; }
+    bool match(std::string_view name) override {
+        return name.find("SMA-Inverter") != std::string::npos;
+    }
 
     void resolved(const service& v) override {
         m_endpoints_changed.store(true);
