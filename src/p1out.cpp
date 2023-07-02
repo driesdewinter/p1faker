@@ -2,6 +2,7 @@
 #include "config.h"
 #include "logf.h"
 #include "www.h"
+#include "mutex_protected.h"
 
 #include <fstream>
 
@@ -126,6 +127,7 @@ struct consumer_impl : core::consumer
         double fakecur = std::max(0.0, m_max_current - budget.current);
         auto payload = str(boost::format(p1template) % fakecur % fakecur % fakecur);
         auto fullmsg = str(boost::format("%s%04X\r\n") % payload % crc16(payload));
+        *m_p1cache.lock() = fullmsg;
         ssize_t n = write(m_fd, fullmsg.c_str(), fullmsg.size());
         int err = n == ssize_t(fullmsg.size()) ? 0
                 : n < 0 ? errno
@@ -144,23 +146,27 @@ struct consumer_impl : core::consumer
     int m_fd = STDOUT_FILENO;
     int m_connect_errno = EBADFD;
     int m_write_errno = 0;
-    std::string m_p1template;
-} impl;
+    mutex_protected<std::string> m_p1cache;
 
-www::rpc p1status = www::rpc::get("p1status", [] {
-    static config::param<std::string> path{"p1status.path", "/sys/class/gpio/gpio2/value"};
-    static bool was_open = true;
-    std::ifstream fin{path.get()};
-    if (fin.is_open() != was_open) {
-        if (fin.is_open()) logfdebug("Successfully opened %s for reading", path);
-        else logferror("Could not open %s for reading", path);
-        was_open = fin.is_open();
-    }
-    if (not fin.is_open()) return false;
-    bool result;
-    fin >> result;
-    result = !result; // inverted due to opto coupler
-    return result;
-});
+    www::rpc m_status_rpc = www::rpc::get("p1status", [] {
+        static config::param<std::string> path{"p1status.path", "/sys/class/gpio/gpio2/value"};
+        static bool was_open = true;
+        std::ifstream fin{path.get()};
+        if (fin.is_open() != was_open) {
+            if (fin.is_open()) logfdebug("Successfully opened %s for reading", path);
+            else logferror("Could not open %s for reading", path);
+            was_open = fin.is_open();
+        }
+        if (not fin.is_open()) return false;
+        bool result;
+        fin >> result;
+        result = !result; // inverted due to opto coupler
+        return result;
+    });
+
+    www::rpc m_out_rpc = www::rpc::get("p1out", [this] {
+        return *m_p1cache.lock();
+    });
+} impl;
 
 } // anonymous namespace
