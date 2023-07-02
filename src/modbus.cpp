@@ -1,5 +1,6 @@
 #include "modbus.h"
 #include "logf.h"
+#include "config.h"
 
 #include <sstream>
 #include <boost/asio.hpp>
@@ -99,6 +100,8 @@ struct response {
     }
 };
 
+config::param<int> tcp_rcv_timeout("modbus.tcp_rcv_timeout", 200);
+
 } // namespace modbus
 
 using namespace modbus;
@@ -137,6 +140,8 @@ struct connection::impl {
             try {
                 logfdebug("Try to connect to %s at %s:%d", m_name, ep.address(), ep.port());
                 m_sock = boost::asio::ip::tcp::socket{m_io_service, ep.protocol()};
+                const int timeout = tcp_rcv_timeout;
+                ::setsockopt(m_sock.native_handle(), SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char *>(&timeout), sizeof(timeout));
                 m_sock.connect(ep);
                 if (m_connect_error.failed())
                     logfinfo("Successfully connected to %s at %s:%s", m_name, ep.address(), ep.port());
@@ -170,7 +175,7 @@ struct connection::impl {
             auto t1 = std::chrono::system_clock::now();
             std::size_t received = m_sock.read_some(boost::asio::buffer(raw_response, raw_response.size()));
             auto t2 = std::chrono::system_clock::now();
-            if (t2 - t1 > 500ms)
+            if (t2 - t1 > 1ms * tcp_rcv_timeout)
                 logfwarn("Reading modbus registers %s... from %s at %s:%s took long: %s",
                         start_address, m_name, m_sock.remote_endpoint().address(), m_sock.remote_endpoint().port(),
                         duration_cast<std::chrono::milliseconds>(t2 - t1));
