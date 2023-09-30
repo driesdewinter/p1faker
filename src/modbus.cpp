@@ -3,7 +3,12 @@
 #include "config.h"
 
 #include <sstream>
-#include <boost/asio.hpp>
+
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 using namespace std::literals::chrono_literals;
 
@@ -100,7 +105,9 @@ struct response {
     }
 };
 
-config::param<int> tcp_rcv_timeout("modbus.tcp_rcv_timeout", 200);
+config::param<int> tcp_connect_timeout("modbus.tcp_receive_timeout", 1000);
+config::param<int> tcp_write_timeout("modbus.tcp_write_timeout", 500);
+config::param<int> tcp_receive_timeout("modbus.tcp_connect_timeout", 500);
 
 } // namespace modbus
 
@@ -108,26 +115,47 @@ using namespace modbus;
 
 struct connection::impl {
     std::string m_name;
-    std::vector<boost::asio::ip::tcp::endpoint> m_endpoints;
-    boost::asio::io_service m_io_service{};
-    boost::asio::ip::tcp::socket m_sock{m_io_service};
+    std::vector<endpoint> m_endpoints;
+    endpoint m_curendpoint;
+    int m_sock = -1;
     boost::system::error_code m_connect_error = syserr(EBADF);
     boost::system::error_code m_request_error{};
 
     impl(std::string _name)
     : m_name(_name) {}
 
-    void update_endpoint_candidates(const std::vector<boost::asio::ip::tcp::endpoint>& endpoints)
-    {
+    ~impl() {
+        if (m_sock != -1) close(m_sock);
+    }
+
+    void update_endpoint_candidates(const std::vector<endpoint>& endpoints) {
         m_endpoints = endpoints;
-        if (m_sock.is_open() and std::find(m_endpoints.begin(), m_endpoints.end(), m_sock.remote_endpoint()) == m_endpoints.end())
-        {
+        if (m_sock != -1 and std::find(m_endpoints.begin(), m_endpoints.end(), m_curendpoint) == m_endpoints.end()) {
             if (not m_connect_error.failed()) {
                 logfinfo("Intentionally disconnect from %s at %s:%d because it is no longer a candidate endpoint.",
-                        m_name, m_sock.remote_endpoint().address(), m_sock.remote_endpoint().port());
+                        m_name, m_curendpoint.address, m_curendpoint.port);
             }
             m_connect_error = syserr(EBADF);
         }
+    }
+
+    void pollsock(short events, int timeout) {
+        auto t1 = std::chrono::system_clock::now();
+        struct pollfd pfds[] = { { .fd = m_sock, .events = events, .revents = 0 } };
+        int rc = poll(pfds, 1, timeout);
+        if (rc < 0)
+            throw sysexc(errno);
+        else if (rc == 0)
+            throw sysexc(ETIMEDOUT);
+        int error = 0; socklen_t len = sizeof(error);
+        int retval = getsockopt(m_sock, SOL_SOCKET, SO_ERROR, &error, &len);
+        if (retval == 0 && error != 0) throw sysexc(error);
+        auto t2 = std::chrono::system_clock::now();
+        if (t2 - t1 > 1ms * timeout / 2)
+            logfdebug("Polling %s at %s:%s for events %d took long: %s",
+                    m_name, m_curendpoint.address, m_curendpoint.port, events,
+                    duration_cast<std::chrono::milliseconds>(t2 - t1).count());
+
     }
 
     void reconnect() {
@@ -138,18 +166,47 @@ struct connection::impl {
             }
         } else for (const auto& ep : m_endpoints) {
             try {
-                logfdebug("Try to connect to %s at %s:%d", m_name, ep.address(), ep.port());
-                m_sock = boost::asio::ip::tcp::socket{m_io_service, ep.protocol()};
-                const int timeout = tcp_rcv_timeout;
-                ::setsockopt(m_sock.native_handle(), SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char *>(&timeout), sizeof(timeout));
-                m_sock.connect(ep);
+                logfdebug("Try to connect to %s at %s:%d", m_name, ep.address, ep.port);
+                m_curendpoint = ep;
+
+                union {
+                    sockaddr base;
+                    sockaddr_in in;
+                    sockaddr_in6 in6;
+                } addr;
+                std::memset(&addr, 0, sizeof(addr));
+
+                if (ep.address.is_v6()) {
+                    addr.in6.sin6_family = AF_INET6;
+                    const auto& bytes = ep.address.to_v6().to_bytes();
+                    std::copy(bytes.begin(), bytes.end(), &addr.in6.sin6_addr.__in6_u.__u6_addr8[0]);
+                    addr.in6.sin6_port = htons(ep.port);
+                } else {
+                    addr.in.sin_family = AF_INET;
+                    addr.in.sin_addr.s_addr = htonl(ep.address.to_v4().to_uint());
+                    addr.in.sin_port = htons(ep.port);
+                }
+
+                if (m_sock != -1) close(m_sock);
+                m_sock = socket(addr.base.sa_family, SOCK_STREAM, 0);
+                if (m_sock < 0)
+                    throw sysexc(errno);
+
+                if (fcntl(m_sock, F_SETFL, O_NONBLOCK) < 0)
+                    throw sysexc(errno);
+
+                if (connect(m_sock, &addr.base, sizeof(addr)) < 0 && (errno != EWOULDBLOCK) && (errno != EINPROGRESS))
+                    throw sysexc(errno);
+
+                pollsock(POLLOUT, tcp_connect_timeout.get());
+
                 if (m_connect_error.failed())
-                    logfinfo("Successfully connected to %s at %s:%s", m_name, ep.address(), ep.port());
+                    logfinfo("Successfully connected to %s at %s:%s", m_name, ep.address, ep.port);
                 m_connect_error = {};
                 break; // only continue the loop in case of connection failure
             } catch (boost::system::system_error& e) {
                 if (m_connect_error != e.code()) {
-                    logferror("Failed to connect to %s at %s:%d : %s", m_name, ep.address(), ep.port(), e.code().message());
+                    logferror("Failed to connect to %s at %s:%d : %s", m_name, ep.address, ep.port, e.code().message());
                     m_connect_error = e.code();
                 }
             }
@@ -163,22 +220,24 @@ struct connection::impl {
             return std::nullopt;
 
         try {
+
+            pollsock(POLLOUT, tcp_write_timeout.get());
+
             request req;
             req.function_code = 3;
             req.reference_number = htons(start_address);
             req.word_count = htons(word_count);
             req.unit_id = unit_id;
-            std::size_t written = m_sock.write_some(boost::asio::buffer(reinterpret_cast<const uint8_t*>(&req), sizeof(req)));
-            if (written != sizeof(req))
+            ssize_t written = write(m_sock, reinterpret_cast<const uint8_t*>(&req), sizeof(req));
+            if (written < 0)
+                throw sysexc(errno);
+            else if (written != sizeof(req))
                 throw sysexc(EMSGSIZE);
+
+            pollsock(POLLIN, tcp_receive_timeout.get());
+
             std::array<uint8_t, 1500> raw_response;
-            auto t1 = std::chrono::system_clock::now();
-            std::size_t received = m_sock.read_some(boost::asio::buffer(raw_response, raw_response.size()));
-            auto t2 = std::chrono::system_clock::now();
-            if (t2 - t1 > 1ms * tcp_rcv_timeout)
-                logfwarn("Reading modbus registers %s... from %s at %s:%s took long: %s",
-                        start_address, m_name, m_sock.remote_endpoint().address(), m_sock.remote_endpoint().port(),
-                        duration_cast<std::chrono::milliseconds>(t2 - t1));
+            std::size_t received = read(m_sock, &raw_response[0], raw_response.size());
             const response& rep = *reinterpret_cast<const response*>(raw_response.begin());
             rep.validate(received, req);
             m_request_error = {};
@@ -186,7 +245,7 @@ struct connection::impl {
         } catch (boost::system::system_error& e) {
              if (m_request_error != e.code()) {
                  logferror("Reading modbus registers from %s at %s:%s failed: %s",
-                         m_name, m_sock.remote_endpoint().address(), m_sock.remote_endpoint().port(),
+                         m_name, m_curendpoint.address, m_curendpoint.port,
                          e.code().message());
                  m_request_error = e.code();
              }
@@ -200,7 +259,7 @@ struct connection::impl {
 connection::connection(std::string name)
 : m_impl{std::make_shared<impl>(name)} {}
 
-void connection::update_endpoint_candidates(const std::vector<boost::asio::ip::tcp::endpoint>& endpoints)
+void connection::update_endpoint_candidates(const std::vector<endpoint>& endpoints)
 {
     m_impl->update_endpoint_candidates(endpoints);
 }

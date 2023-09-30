@@ -4,9 +4,16 @@
 #include <vector>
 #include <optional>
 #include <memory>
-#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/ip/address.hpp>
 
 namespace modbus {
+
+struct endpoint {
+    boost::asio::ip::address address;
+    uint16_t port;
+
+    auto operator<=>(const endpoint& r) const = default;
+};
 
 struct register_vector {
     template<typename T>
@@ -29,7 +36,7 @@ class connection {
 public:
     connection(std::string name);
 
-    void update_endpoint_candidates(const std::vector<boost::asio::ip::tcp::endpoint>& endpoints);
+    void update_endpoint_candidates(const std::vector<endpoint>& endpoints);
 
     std::optional<register_vector> read_holding_registers(uint8_t unit_id, uint16_t start_address, uint16_t word_count);
 private:

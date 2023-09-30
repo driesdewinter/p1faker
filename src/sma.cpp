@@ -4,6 +4,8 @@
 #include "modbus.h"
 #include "service_discovery.h"
 
+#include <atomic>
+
 namespace
 {
 
@@ -35,9 +37,9 @@ struct producer_impl : core::producer, service_discovery::subscriber
     void poll(core::situation& sit) override
     {
         if (m_endpoints_changed.exchange(false)) {
-            std::vector<boost::asio::ip::tcp::endpoint> ep;
+            std::vector<modbus::endpoint> ep;
             for (auto& service : *m_services.lock())
-                ep.push_back(boost::asio::ip::tcp::endpoint{service.address, m_port.get()});
+                ep.push_back(modbus::endpoint{service.address, m_port.get()});
             m_conn.update_endpoint_candidates(ep);
         }
 
