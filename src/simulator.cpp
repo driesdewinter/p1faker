@@ -9,8 +9,8 @@
 namespace
 {
 
-config::param<int> default_car_min_power{"simulator.car_min_power", 2000};
-config::param<int> default_car_max_power{"simulator.car_max_power", 7000};
+config::param<int> default_car_min_power{"simulator.car_min_power", 5500};
+config::param<int> default_car_max_power{"simulator.car_max_power", 11000};
 config::param<int> default_inverter_max_power{"inverter_max_power", 8000};
 config::param<int> default_battery_max_power{"battery_max_power", 5000};
 
